@@ -11,27 +11,21 @@ int PWMValue = 50;     //initialise PWM duty cycle to 30/255. Fan doesn't run wh
 const int redPin = 3;
 const int greenPin = 5;
 const int yellowPin = 6;
-  
+bool human_readable = false;    //flag to set whether to transmit human or machine readable output
+bool airflow_stable = false;
 
-uint8_t CRC_prim (uint8_t x, uint8_t crc) {
-  crc ^= x;
-  for (uint8_t bit = 8; bit > 0; --bit) {
-    if (crc & 0x80) crc = (crc << 1) ^ POLYNOMIAL;
-    else crc = (crc << 1);
-  }
-  return crc;
-}
+ 
 
-#define sfm3300i2c 0x40
+#define sfm3300i2c 0x40               //I2C address of flowmeter
 
 void setup() {
-  pinMode(FanPWMPin, OUTPUT);
+  pinMode(FanPWMPin, OUTPUT);         //set up pins
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(redPin, OUTPUT);
   pinMode(greenPin, OUTPUT);
   pinMode(yellowPin, OUTPUT);
   
-  Wire.begin();
+  Wire.begin();                       //set up serial port and I2C
   Serial.begin(9600);
   delay(500); // let serial console settle
 
@@ -75,16 +69,15 @@ void setup() {
   Wire.read();
   */
 
-  Serial.println("Flow\tVolume");
-  analogWrite(FanPWMPin, PWMValue);
+  analogWrite(FanPWMPin, PWMValue);   //initialise fan PWM to initial value
   analogWrite(yellowPin, 125);
   analogWrite(redPin, 125);
   //delay(3000);
-}
+}   //-----------------------------------END SETUP-----------------------------------
 
 
 const unsigned mms = 1000; // measurement interval in ms
-//const unsigned dms = 1000; // display every XXX ms
+
 
 unsigned long mt_prev = millis(); // last measurement time-stamp
 float flow; // current flow value in slm
@@ -97,51 +90,7 @@ int flow_array_index = 0;
 float flow_moving_avg = 0;
 
 
-void display_flow_volume(bool force_d = false) {
-  if (5 < abs(vol) || force_d) { // for convenience let's display only significant volumes (>5ml)
-    Serial.print(flow);
-    Serial.print("\t");
-    Serial.print(vol);
-    Serial.print("\t");
-    Serial.print(PWMValue);
-    Serial.print("\t");
-    Serial.print(flow_moving_avg);
-    Serial.println(crc_error?" CRC error":"");
-  }
-}
 
-void SFM_measure() {
-  if (3 == Wire.requestFrom(sfm3300i2c, 3)) {
-    uint8_t crc = 0;
-    uint16_t a = Wire.read();
-    crc = CRC_prim (a, crc);
-    uint8_t  b = Wire.read();
-    crc = CRC_prim (b, crc);
-    uint8_t  c = Wire.read();
-    unsigned long mt = millis(); // measurement time-stamp
-    if (crc_error = (crc != c)) // report CRC error
-      return;
-    a = (a<<8) | b;
-    float new_flow = ((float)a - 32768) / 120;
-    // an additional functionality for convenience of experimenting with the sensor
-    flow_sign = 0 < new_flow;
-    if (flow_sp != flow_sign) { // once the flow changed direction
-      flow_sp = flow_sign;
-    // display_flow_volume();    // display last measurements
-      vol = 0;                  // reset the volume
-    }
-    flow = new_flow;
-    unsigned long mt_delta = mt - mt_prev; // time interval of the current measurement
-    mt_prev = mt;
-    vol += flow/60*mt_delta; // flow measured in slm; volume calculated in (s)cc
-    // /60 --> convert to liters per second
-    // *1000 --> convert liters to cubic centimeters
-    // /1000 --> we count time in milliseconds
-    // *mt_delta --> current measurement time delta in milliseconds
-  } else {
-    // report i2c read error
-  }
-}
 
 
 unsigned long ms_prev = millis(); // timer for measurements "soft interrupts"
@@ -149,7 +98,11 @@ unsigned long ms_display = millis(); // timer for display "soft interrupts"
 int i;
 int setpoint_input;
 
-void loop() {
+
+
+
+
+void loop() { //--------------------------------------------MAIN LOOP--------------------------------------------------------------------------------------
   unsigned long ms_curr = millis();
   char command;
   
@@ -201,24 +154,29 @@ void loop() {
         //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on to show stable airflow
         digitalWrite(redPin, LOW);
         analogWrite(greenPin, 125);
-        Serial.print("Airflow stable ");
-        Serial.println(flow);
+        //Serial.print("Airflow stable ");
+        //Serial.println(flow);
+        airflow_stable = true;
+        
     }else {
       digitalWrite(greenPin, LOW); //digitalWrite(LED_BUILTIN, LOW);   //turn off the LED if the airflow is not within range of the setpoint
       analogWrite(redPin, 125);
-      Serial.print("Setting... ");
-      Serial.println(flow);
+      //Serial.print("Setting... ");
+      //Serial.println(flow);
+      airflow_stable = false;
     }
    }else {
       digitalWrite(greenPin, LOW); //digitalWrite(LED_BUILTIN, LOW);   //turn off the LED if the airflow is not within range of the setpoint
       analogWrite(redPin, 125);
-      Serial.print("Setting... ");
-      Serial.println(flow);
+      //Serial.print("Setting... ");
+      //Serial.println(flow);
+      airflow_stable = false;
    }
 
 
    
- // display_flow_volume(true);
+ transmit_data();
+ 
    
   } // end measurement cycle
 
@@ -232,7 +190,9 @@ void loop() {
     digitalWrite(yellowPin, LOW);
   }
   if (command == 'f'){
-    display_flow_volume(true);
+    //display_flow_volume(true);
+    transmit_data();
+    
   }
 
   if (command == 's'){
@@ -243,9 +203,149 @@ void loop() {
     Serial.println(FlowSetpoint);
     
   }
+
+  if (command == 'h'){
+    human_readable = true;
+  }
+
+  if (command == 'm'){
+    human_readable = false;
+  }
+
+  
   command = 0;
   
  } // end while serial available
 
   
-} //end main loop
+} //-------------------------------------end main loop---------------------------------
+
+
+
+
+
+//-----Reads from Flowmeter and converts into SFM units
+void SFM_measure() {
+  if (3 == Wire.requestFrom(sfm3300i2c, 3)) {
+    uint8_t crc = 0;
+    uint16_t a = Wire.read();
+    crc = CRC_prim (a, crc);
+    uint8_t  b = Wire.read();
+    crc = CRC_prim (b, crc);
+    uint8_t  c = Wire.read();
+    unsigned long mt = millis(); // measurement time-stamp
+    if (crc_error = (crc != c)) // report CRC error
+      return;
+    a = (a<<8) | b;
+    float new_flow = ((float)a - 32768) / 120;
+    // an additional functionality for convenience of experimenting with the sensor
+    flow_sign = 0 < new_flow;
+    if (flow_sp != flow_sign) { // once the flow changed direction
+      flow_sp = flow_sign;
+    // display_flow_volume();    // display last measurements
+      vol = 0;                  // reset the volume
+    }
+    flow = new_flow;
+    unsigned long mt_delta = mt - mt_prev; // time interval of the current measurement
+    mt_prev = mt;
+    vol += flow/60*mt_delta; // flow measured in slm; volume calculated in (s)cc
+    // /60 --> convert to liters per second
+    // *1000 --> convert liters to cubic centimeters
+    // /1000 --> we count time in milliseconds
+    // *mt_delta --> current measurement time delta in milliseconds
+  } else {
+    // report i2c read error
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+//-----Checks CRC of received flowmeter data.
+
+uint8_t CRC_prim (uint8_t x, uint8_t crc) {
+  crc ^= x;
+  for (uint8_t bit = 8; bit > 0; --bit) {
+    if (crc & 0x80) crc = (crc << 1) ^ POLYNOMIAL;
+    else crc = (crc << 1);
+  }
+  return crc;
+}
+
+
+
+
+
+
+
+void display_flow_volume(bool force_d = false) {
+  if (5 < abs(vol) || force_d) { // for convenience let's display only significant volumes (>5ml)
+    Serial.print(flow);
+    Serial.print("\t");
+    Serial.print(vol);
+    Serial.print("\t");
+    Serial.print(PWMValue);
+    Serial.print("\t");
+    Serial.print(flow_moving_avg);
+    Serial.println(crc_error?" CRC error":"");
+  }
+}
+
+
+void transmit_data (void) {
+   if (human_readable){
+    Serial.print("Flow: ");
+    Serial.print(flow);
+    Serial.print("\t");
+    //Serial.print("Volume: ");
+    //Serial.print(vol);
+    //Serial.print("\t");
+    Serial.print("PWM Value: ");
+    Serial.print(PWMValue);
+    Serial.print("\t");
+    Serial.print("Flow Avg: ");    
+    Serial.print(flow_moving_avg);
+    Serial.print("\t");
+    Serial.print("Setpoint: ");
+    Serial.print(FlowSetpoint);
+    Serial.print("\t");
+    if (airflow_stable){
+      Serial.print("Stable");
+    }else{Serial.print("Setting...");}
+    Serial.print("\t");
+    
+    Serial.println(crc_error?" CRC error":"");
+   }
+
+   else{
+    Serial.print("F");
+    Serial.print(flow);
+    
+    //Serial.print("V");
+    //Serial.print(vol);
+    //Serial.print("\t");
+    Serial.print("P");
+    Serial.print(PWMValue);
+    
+    Serial.print("A");    
+    Serial.print(flow_moving_avg);
+    
+    Serial.print("S");
+    Serial.print(FlowSetpoint);
+    
+    if (airflow_stable){
+      Serial.print("K");
+    }else{Serial.print("N");}
+    
+    
+    Serial.println(crc_error?" CRC error":"");
+   }
+}

@@ -1,0 +1,27 @@
+Fetures to implement:
+Interface Temp Sensor
+Interface Humidity Sensor
+
+r/x run/stop feature
+? help feature
+f flow reading
+t temp reading
+h humidity reading
+bounding of setpoint input
+check for invalid command
+remove use of float variables
+fan tacho feedback
+
+
+Commands:
+?	help - lists commands
+h	human readable output
+m	machine readable output
+s	new setpoint e.g. s15 or s50
+r	run - starts closed loop control
+x	stop - stops control loop and turns off fan
+f	return flow measurement
+t	return temperature measurement
+h	return humidity measurement
+
+

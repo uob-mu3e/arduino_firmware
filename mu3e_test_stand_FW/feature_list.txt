@@ -1,9 +1,13 @@
 Fetures to implement:
+Hardware:
 Interface Temp Sensor
 Interface Humidity Sensor
 
+
+Software:
+tidy up code		WIP
 r/x run/stop feature
-? help feature
+? help feature		DONE
 f flow reading
 t temp reading
 h humidity reading
@@ -15,7 +19,7 @@ fan tacho feedback
 
 Commands:
 ?	help - lists commands
-h	human readable output
+v	human readable verbose output
 m	machine readable output
 s	new setpoint e.g. s15 or s50
 r	run - starts closed loop control

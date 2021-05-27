@@ -175,6 +175,19 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
 
  while (Serial.available() > 0) {
   command = Serial.read();
+
+  if(command == '?'){
+    Serial.println(F("Commands:"));   //F stores the strings in Flash memory, saves using RAM space.
+    Serial.println(F("?: Help"));
+    Serial.println(F("v: produce (V)erbose human readable output"));
+    Serial.println(F("m: produce compact (M)achine readable output"));
+    Serial.println(F("s: new (S)etpoint. followed by integer. e.g. s35 for 35 l/min"));
+    Serial.println(F("r: (R)un - begin closed loop control - not implememted yet"));
+    Serial.println(F("x: Break - stop closed loop control and turn off fan - not implememted yet"));
+    Serial.println(F("f: display (F}low measurement"));
+    Serial.println(F("t: display (T)emperature measurement - not implememted yet"));
+    Serial.println(F("h: display (H)umidity measurement - not implememted yet"));
+    }
     
   if (command == 'f'){
     //display_flow_volume(true);

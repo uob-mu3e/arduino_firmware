@@ -150,50 +150,36 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
   flow_moving_avg /= 10;
 
    if (flow_moving_avg < (FlowSetpoint+1)){
-    if (flow_moving_avg > (FlowSetpoint-1)){
-        //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on to show stable airflow
-        digitalWrite(redPin, LOW);
-        analogWrite(greenPin, 125);
-        //Serial.print("Airflow stable ");
-        //Serial.println(flow);
-        airflow_stable = true;
+    if (flow_moving_avg > (FlowSetpoint-1)){  //if average of last 10 flow readings is setpoint +/- 1 then   // turn the LED on to show stable airflow
+        digitalWrite(redPin, LOW);            //turn off red LED
+        analogWrite(greenPin, 125);           // turn the green LED on to show stable airflow
+        airflow_stable = true;                //and flag the system as stable
         
     }else {
-      digitalWrite(greenPin, LOW); //digitalWrite(LED_BUILTIN, LOW);   //turn off the LED if the airflow is not within range of the setpoint
-      analogWrite(redPin, 125);
-      //Serial.print("Setting... ");
-      //Serial.println(flow);
-      airflow_stable = false;
+      digitalWrite(greenPin, LOW);    // If average flow is <(setpoint-1) then turn off green LED 
+      analogWrite(redPin, 125);       //and light red LED
+      airflow_stable = false;         //and flag system as not stable
     }
    }else {
-      digitalWrite(greenPin, LOW); //digitalWrite(LED_BUILTIN, LOW);   //turn off the LED if the airflow is not within range of the setpoint
-      analogWrite(redPin, 125);
-      //Serial.print("Setting... ");
-      //Serial.println(flow);
-      airflow_stable = false;
+      digitalWrite(greenPin, LOW);    //If average flow is <(setpoint+1) then turn off green LED 
+      analogWrite(redPin, 125);       //and light red LED
+      airflow_stable = false;         //and flag system as not stable
    }
 
 
    
- transmit_data();
+ transmit_data(); // output data via serial port
  
    
   } // end measurement cycle
 
  while (Serial.available() > 0) {
   command = Serial.read();
-  
-  if (command == 'y'){
-    analogWrite(yellowPin, 127);
-  }
-  if (command == 'o'){
-    digitalWrite(yellowPin, LOW);
-  }
+    
   if (command == 'f'){
     //display_flow_volume(true);
     transmit_data();
-    
-  }
+   }
 
   if (command == 's'){
     Serial.print("New setpoint entered:");
@@ -213,7 +199,7 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
   }
 
   
-  command = 0;
+  command = 0; //reset current command to null
   
  } // end while serial available
 

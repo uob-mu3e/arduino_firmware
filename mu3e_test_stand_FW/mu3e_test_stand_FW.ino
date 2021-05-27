@@ -4,19 +4,35 @@
 // CRC calculation as per:
 // https://www.sensirion.com/fileadmin/user_upload/customers/sensirion/Dokumente/5_Mass_Flow_Meters/Sensirion_Mass_Flow_Meters_CRC_Calculation_V1.pdf
 
-#define POLYNOMIAL 0x31     //P(x)=x^8+x^5+x^4+1 = 100110001
-int FanPWMPin = 9;    // Fan PWM control signal connected to digital pin 9
-int FlowSetpoint = 30; //desired setpoint for airflow
-int PWMValue = 50;     //initialise PWM duty cycle to 30/255. Fan doesn't run when this value is lower than mid-30s so use 30 as a minimum value.
-const int redPin = 3;
-const int greenPin = 5;
-const int yellowPin = 6;
+
+//HARDWARE:
+//Sensirion SFM3300-D flowmeter
+//    - I2C interface 
+//    - some example code taken from https://github.com/MyElectrons/sfm3300-arduino  
+//
+// Red, Green and Yellow status LEDs 
+//
+//Fan is powered directly from a 12v supply
+//      - it has a PWM control signal. The duty cycle of this controls the fan speed
+//      - it has a tachometer output which outputs pulses which relate to fan speed. Not yet implemented here.
+
+
+#define POLYNOMIAL 0x31     //P(x)=x^8+x^5+x^4+1 = 100110001   //magic number used in the CRC decoding for the flowmeter
+#define sfm3300i2c 0x40               //I2C address of flowmeter
+
+int FanPWMPin = 9;          //Fan PWM control signal connected to digital pin 9
+const int redPin = 3;       //Red LED connected to Pin 3
+const int greenPin = 5;     //Green LED connected to Pin 5
+const int yellowPin = 6;    //Yello LED connected to Pin 6
+
+int FlowSetpoint = 30;      //desired setpoint for airflow
+int PWMValue = 50;          //initialise PWM duty cycle to 30/255. Fan doesn't run when this value is lower than mid-30s so use 30 as a minimum value.
 bool human_readable = false;    //flag to set whether to transmit human or machine readable output
-bool airflow_stable = false;
+bool airflow_stable = false;    //flag to show if airflow control loop is stable
 
  
 
-#define sfm3300i2c 0x40               //I2C address of flowmeter
+
 
 void setup() {
   pinMode(FanPWMPin, OUTPUT);         //set up pins

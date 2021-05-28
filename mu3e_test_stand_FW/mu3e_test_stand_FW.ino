@@ -123,7 +123,7 @@ float flow_values[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; //an array to hold histo
 int flow_array_index = 0;
 float flow_moving_avg = 0;
 
-
+float temperature = 0; //temperature which is calculated from reading the MAX31865 sensor
 
 
 
@@ -151,8 +151,9 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
     
     SFM_measure();                    //read from the flowmeter
     
-    Serial.print("Temperature = "); 
-    Serial.println(thermo.temperature(RNOMINAL, RREF)); //read from the temperature sensor
+    //Serial.print("Temperature = "); 
+    //Serial.println(thermo.temperature(RNOMINAL, RREF)); //read from the temperature sensor
+    temperature = thermo.temperature(RNOMINAL, RREF);
     
 
 
@@ -342,6 +343,9 @@ void display_flow_volume(bool force_d = false) {
 
 void transmit_data (void) {
    if (human_readable){
+    Serial.print("Temp: ");
+    Serial.print(temperature);
+    Serial.print("\t");
     Serial.print("Flow: ");
     Serial.print(flow);
     Serial.print("\t");
@@ -366,6 +370,8 @@ void transmit_data (void) {
    }
 
    else{
+    Serial.print("T");
+    Serial.print(temperature);
     Serial.print("F");
     Serial.print(flow);
     

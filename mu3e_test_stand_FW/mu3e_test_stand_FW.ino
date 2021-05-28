@@ -24,7 +24,9 @@
 //MOSI - Pin 11
 //Chip Select - Pin 10
 
-
+//Honeywell Humidity Sensor
+//-also SPI, same pins as above
+//Chip Select - Pin 7
 
 
 
@@ -35,6 +37,8 @@ int FanPWMPin = 9;          //Fan PWM control signal connected to digital pin 9
 const int redPin = 3;       //Red LED connected to Pin 3
 const int greenPin = 5;     //Green LED connected to Pin 5
 const int yellowPin = 6;    //Yello LED connected to Pin 6
+const int humidityCS = 7;   //Chip Select for humidity sensor is connected to pin 7
+
 
 int FlowSetpoint = 30;      //desired setpoint for airflow
 int PWMValue = 50;          //initialise PWM duty cycle to 30/255. Fan doesn't run when this value is lower than mid-30s so use 30 as a minimum value.
@@ -61,6 +65,8 @@ void setup() {
   pinMode(redPin, OUTPUT);
   pinMode(greenPin, OUTPUT);
   pinMode(yellowPin, OUTPUT);
+  pinMode(humidityCS, OUTPUT);
+  digitalWrite(humidityCS, LOW);    //TEMPORARY - assert this low to disable humidity sensor. - no code written for it yet.
   
   Wire.begin();                       //set up serial port and I2C
   Serial.begin(9600);

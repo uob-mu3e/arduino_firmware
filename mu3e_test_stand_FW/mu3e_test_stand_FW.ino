@@ -1,6 +1,6 @@
 
 #include <Wire.h>
-#include <Adafruit_MAX31865.h>
+#include <Adafruit_MAX31865.h> //from MAX31865 library from Adafruit
 
 // CRC calculation as per:
 // https://www.sensirion.com/fileadmin/user_upload/customers/sensirion/Dokumente/5_Mass_Flow_Meters/Sensirion_Mass_Flow_Meters_CRC_Calculation_V1.pdf
@@ -16,10 +16,20 @@
 //Fan is powered directly from a 12v supply
 //      - it has a PWM control signal. The duty cycle of this controls the fan speed
 //      - it has a tachometer output which outputs pulses which relate to fan speed. Not yet implemented here.
+//
+//
+//MAX31865 temperature sensor is connected via SPI interface. Power from 5v & GND
+//CLK - Pin 13
+//MISO - Pin 12
+//MOSI - Pin 11
+//Chip Select - Pin 10
+
+
+
 
 
 #define POLYNOMIAL 0x31     //P(x)=x^8+x^5+x^4+1 = 100110001   //magic number used in the CRC decoding for the flowmeter
-#define sfm3300i2c 0x40               //I2C address of flowmeter
+#define sfm3300i2c 0x40     //I2C address of flowmeter
 
 int FanPWMPin = 9;          //Fan PWM control signal connected to digital pin 9
 const int redPin = 3;       //Red LED connected to Pin 3
@@ -103,7 +113,7 @@ void setup() {
 
 
   //setup for the MAX31865 temperature sensor
-  thermo.begin(MAX31865_2WIRE);  // set to 2WIRE or 4WIRE as necessary
+  thermo.begin(MAX31865_2WIRE);  // set to 2,3or4WIRE as necessary
   //thermo.begin(MAX31865_3WIRE);
   //thermo.begin(MAX31865_4WIRE);  
   

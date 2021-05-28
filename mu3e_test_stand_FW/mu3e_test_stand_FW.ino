@@ -1,5 +1,6 @@
 
 #include <Wire.h>
+#include <Adafruit_MAX31865.h>
 
 // CRC calculation as per:
 // https://www.sensirion.com/fileadmin/user_upload/customers/sensirion/Dokumente/5_Mass_Flow_Meters/Sensirion_Mass_Flow_Meters_CRC_Calculation_V1.pdf
@@ -30,6 +31,16 @@ int PWMValue = 50;          //initialise PWM duty cycle to 30/255. Fan doesn't r
 bool human_readable = false;    //flag to set whether to transmit human or machine readable output
 bool airflow_stable = false;    //flag to show if airflow control loop is stable
 
+//---Stuff for MAX31865 temperature sensor
+// Use software SPI: CS, DI, DO, CLK
+//Adafruit_MAX31865 thermo = Adafruit_MAX31865(10, 11, 12, 13);
+// use hardware SPI, just pass in the CS pin
+Adafruit_MAX31865 thermo = Adafruit_MAX31865(10);
+// The value of the Rref resistor. Use 430.0 for PT100 and 4300.0 for PT1000
+#define RREF      4300.0
+// The 'nominal' 0-degrees-C resistance of the sensor
+// 100.0 for PT100, 1000.0 for PT1000
+#define RNOMINAL  1000.0
  
 
 
@@ -89,6 +100,13 @@ void setup() {
   analogWrite(yellowPin, 125);
   analogWrite(redPin, 125);
   //delay(3000);
+
+
+  //setup for the MAX31865 temperature sensor
+  thermo.begin(MAX31865_2WIRE);  // set to 2WIRE or 4WIRE as necessary
+  //thermo.begin(MAX31865_3WIRE);
+  //thermo.begin(MAX31865_4WIRE);  
+  
 }   //-----------------------------------END SETUP-----------------------------------
 
 
@@ -130,8 +148,15 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
 
   if (ms_curr - ms_display >= mms) { // "soft interrupt" every mms milliseconds
     ms_display = ms_curr;
-    SFM_measure();
     
+    SFM_measure();                    //read from the flowmeter
+    
+    Serial.print("Temperature = "); 
+    Serial.println(thermo.temperature(RNOMINAL, RREF)); //read from the temperature sensor
+    
+
+
+
 
     if (flow < FlowSetpoint){ // If airflow is too low, increase fan power
       if(PWMValue < 255){     // prevent PWM value overflowing

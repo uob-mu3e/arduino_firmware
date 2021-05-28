@@ -219,7 +219,7 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
     
   }
 
-  if (command == 'h'){
+  if (command == 'v'){
     human_readable = true;
   }
 

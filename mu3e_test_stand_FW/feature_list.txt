@@ -27,5 +27,6 @@ x	stop - stops control loop and turns off fan
 f	return flow measurement
 t	return temperature measurement
 h	return humidity measurement
-
-
+b	broadcast measurements			DONE	
+n	no broadcasting of measurements		DONE
+d	display all measurements		DONE

@@ -44,6 +44,8 @@ int FlowSetpoint = 30;      //desired setpoint for airflow
 int PWMValue = 50;          //initialise PWM duty cycle to 30/255. Fan doesn't run when this value is lower than mid-30s so use 30 as a minimum value.
 bool human_readable = false;    //flag to set whether to transmit human or machine readable output
 bool airflow_stable = false;    //flag to show if airflow control loop is stable
+bool broadcast_flag = true;     //flag to enable/disable auto transmission of serial output on every measurement cycle
+
 
 //---Stuff for MAX31865 temperature sensor
 // Use software SPI: CS, DI, DO, CLK
@@ -225,9 +227,9 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
    }
 
 
-   
+ if (broadcast_flag){  
  transmit_data(); // output data via serial port
- 
+ }
    
   } // end measurement cycle
 
@@ -242,9 +244,13 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
     Serial.println(F("s: new (S)etpoint. followed by integer. e.g. s35 for 35 l/min"));
     Serial.println(F("r: (R)un - begin closed loop control - not implememted yet"));
     Serial.println(F("x: Break - stop closed loop control and turn off fan - not implememted yet"));
+    Serial.println(F("d: (D)isplay all measurements"));
     Serial.println(F("f: display (F}low measurement"));
     Serial.println(F("t: display (T)emperature measurement - not implememted yet"));
     Serial.println(F("h: display (H)umidity measurement - not implememted yet"));
+    Serial.println(F("b: (B)roadcast measurements"));
+    Serial.println(F("n: (N)o broadcasting"));
+    
     }
     
   if (command == 'f'){
@@ -269,6 +275,21 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
     human_readable = false;
   }
 
+  if (command == 'b'){
+    broadcast_flag = true;
+  }
+  
+   if (command == 'n'){
+    broadcast_flag = false;
+  }
+
+  if (command == 'd'){
+     transmit_data(); // output data via serial port
+  }
+
+ 
+
+ 
   
   command = 0; //reset current command to null
   

@@ -2,19 +2,32 @@
 #include <Wire.h>
 #include <Adafruit_MAX31865.h> //from MAX31865 library from Adafruit
 
+// USES Arduino MEGA 2560
+
 // CRC calculation as per:
 // https://www.sensirion.com/fileadmin/user_upload/customers/sensirion/Dokumente/5_Mass_Flow_Meters/Sensirion_Mass_Flow_Meters_CRC_Calculation_V1.pdf
 
 
 //HARDWARE:
+
+// PC is connected to UART0
+
+// Rhode&Schwartz HMP4040 power supply is connected to UART 1
+//(via MAX232A interface chip to generate RS232 voltage levels)
+#define FAN_PSU_CHANNEL  1
+#define MUPIX_PSU_CHANNEL 2
+#define HEATERS_PSU_CHANNEL 3
+#define SPARE_PSU_CHANNEL 4
+
+
 //Sensirion SFM3300-D flowmeter
 //    - I2C interface 
 //    - some example code taken from https://github.com/MyElectrons/sfm3300-arduino  
 //
 // Red, Green and Yellow status LEDs 
 //
-//Fan is powered directly from a 12v supply
-//      - it has a PWM control signal. The duty cycle of this controls the fan speed
+//Fan is powered directly from a 12v supply (HMP4040) Controlled via UART1
+//      - fan has a PWM control signal. The duty cycle of this controls the fan speed
 //      - it has a tachometer output which outputs pulses which relate to fan speed. Not yet implemented here.
 //
 //
@@ -46,6 +59,10 @@ bool human_readable = false;    //flag to set whether to transmit human or machi
 bool airflow_stable = false;    //flag to show if airflow control loop is stable
 bool broadcast_flag = true;     //flag to enable/disable auto transmission of serial output on every measurement cycle
 
+int volt_setpoint;  //variable to hold voltage to be requested from power supply
+int volt_reading;   //"" actual voltage read from power supply
+String command;
+
 
 //---Stuff for MAX31865 temperature sensor
 // Use software SPI: CS, DI, DO, CLK
@@ -72,6 +89,7 @@ void setup() {
   
   Wire.begin();                       //set up serial port and I2C
   Serial.begin(9600);
+  Serial1.begin(9600);
   delay(500); // let serial console settle
 
   // soft reset
@@ -250,7 +268,7 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
     Serial.println(F("h: display (H)umidity measurement - not implememted yet"));
     Serial.println(F("b: (B)roadcast measurements"));
     Serial.println(F("n: (N)o broadcasting"));
-    
+    Serial.println(F("n: (N)o broadcasting"));
     }
     
   if (command == 'f'){
@@ -431,4 +449,27 @@ void transmit_data (void) {
     
     Serial.println(crc_error?" CRC error":"");
    }
+}
+
+
+
+
+//Sends commands to the power supply to set channel 1 to a given voltage
+void set_voltage(int v, int channel) {     
+  Serial1.print(F("INST OUT "));
+  Serial1.println(channel);
+  if (human_readable){
+      Serial.print(F("INST OUT "));
+      Serial.println(channel);
+      }
+  String cmd="VOLT ";
+  String tot;
+  String volt=String(v);
+  //String endl="\n";
+  tot=cmd+volt;
+  Serial1.println(tot);
+  if (human_readable){
+    Serial.println(tot);
+    }
+  delay(100);
 }

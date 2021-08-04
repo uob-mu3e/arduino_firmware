@@ -1,3 +1,6 @@
+//this is a change that is relevant to adding the humidity sensor
+
+
 
 #include <Wire.h>
 #include <Adafruit_MAX31865.h> //from MAX31865 library from Adafruit

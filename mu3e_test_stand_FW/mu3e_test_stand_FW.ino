@@ -59,9 +59,18 @@ bool human_readable = false;    //flag to set whether to transmit human or machi
 bool airflow_stable = false;    //flag to show if airflow control loop is stable
 bool broadcast_flag = true;     //flag to enable/disable auto transmission of serial output on every measurement cycle
 
-int volt_setpoint;  //variable to hold voltage to be requested from power supply
-int volt_reading;   //"" actual voltage read from power supply
+
+float volt_setpoint;  //variable to hold voltage to be requested from power supply
+float volt_reading;   //"" actual voltage read from power supply
+float volt_precision=0.01;  //precision with which compare actual voltage to setpoint
+float current_setpoint;   //variable to hold current to be requested from power supply
+float current_reading;  //actual current read from the power supply
+float current_limit=2;   //upper limit on the current
+float curr_precision=0.01; //precision with which compare actual current to setpoint
 String command;
+String parameter;
+String output;
+int channel;          //select channel of the PSU
 
 
 //---Stuff for MAX31865 temperature sensor
@@ -87,10 +96,21 @@ void setup() {
   pinMode(humidityCS, OUTPUT);
   digitalWrite(humidityCS, LOW);    //TEMPORARY - assert this low to disable humidity sensor. - no code written for it yet.
   
-  Wire.begin();                       //set up serial port and I2C
-  Serial.begin(9600);
-  Serial1.begin(9600);
+  Wire.begin();                       //set up serial ports and I2C
+  Serial.begin(9600);                 //Serial port for PC
+  Serial1.begin(9600);                //Serial port for PSU
   delay(500); // let serial console settle
+
+   //initializing all power supply channels at 0
+  channel_initialization();
+  Serial.println("Select PSU channel: ");
+  while (Serial.available()==0) {};
+  channel = Serial.parseInt();
+  channel_select(channel);
+  Serial.print("Channel ");
+  Serial.print(channel);
+  Serial.println(" selected.");
+
 
   // soft reset
   Wire.beginTransmission(sfm3300i2c);
@@ -268,7 +288,7 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
     Serial.println(F("h: display (H)umidity measurement - not implememted yet"));
     Serial.println(F("b: (B)roadcast measurements"));
     Serial.println(F("n: (N)o broadcasting"));
-    Serial.println(F("n: (N)o broadcasting"));
+    Serial.println(F("p: Change (P)SU Parameter"));
     }
     
   if (command == 'f'){
@@ -305,7 +325,9 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
      transmit_data(); // output data via serial port
   }
 
- 
+ if (command == 'p'){
+     ChangePSUParameter();
+  }
 
  
   
@@ -317,8 +339,40 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
 } //-------------------------------------end main loop---------------------------------
 
 
+//change a PSU parameter
+void ChangePSUParameter(){
+  
+Serial.println("Select parameter to change (voltage/current): ");
+while (Serial.available()==0) {}
+parameter = Serial.readString();
 
 
+
+//ask for input voltage
+if (parameter =="voltage"){
+   Serial.println("Set channel voltage: ");
+   while (Serial.available()==0){}
+   volt_setpoint = Serial.parseFloat();
+   set_voltage(volt_setpoint);
+   delay(500);
+}
+
+
+if (parameter =="current") {
+   Serial.println("Set channel current: ");
+   while (Serial.available()==0){}
+   current_setpoint = Serial.parseFloat();
+    while(current_setpoint>current_limit) {
+      Serial.print("Current too high. Pick a value below ");
+      Serial.print(current_limit);
+      Serial.println(" amps:");
+      while (Serial.available()==0){}
+      current_setpoint = Serial.parseFloat();
+    }
+   set_current(current_setpoint);
+   delay(500);  
+}
+}
 
 //-----Reads from Flowmeter and converts into SFM units
 void SFM_measure() {
@@ -454,22 +508,118 @@ void transmit_data (void) {
 
 
 
-//Sends commands to the power supply to set channel 1 to a given voltage
-void set_voltage(int v, int channel) {     
-  Serial1.print(F("INST OUT "));
-  Serial1.println(channel);
-  if (human_readable){
-      Serial.print(F("INST OUT "));
-      Serial.println(channel);
-      }
+
+void set_voltage(float v) {
   String cmd="VOLT ";
-  String tot;
   String volt=String(v);
-  //String endl="\n";
-  tot=cmd+volt;
+  String tot=cmd+volt;
   Serial1.println(tot);
-  if (human_readable){
-    Serial.println(tot);
+  delay(1000);
+
+//check whether the output voltage=setpoint
+  Serial1.println("VOLT?");
+  while (Serial1.available()==0){}    //wait for reply from PSU
+  volt_reading = Serial1.parseFloat();
+  Serial.print("Output voltage: ");
+  Serial.println(volt_reading);
+  if (volt_reading<v+volt_precision || volt_reading>v-volt_precision){
+    Serial.println("Voltage OK");
+  }
+  else{
+    Serial.println("Voltage ERROR");
+  }
+}
+
+
+
+
+
+void set_current(float a) {
+  String cmd="CURR ";
+  String curr=String(a);
+  String tot=cmd+curr;
+  Serial1.println(tot);
+  delay(1000);
+
+//check whether the output voltage=setpoint
+  Serial1.println("CURR?");
+  while (Serial1.available()==0){}    //wait for reply from PSU
+  current_reading = Serial1.parseFloat();
+  Serial.print("Output current: ");
+  Serial.println(current_reading);
+  if (current_reading<a+curr_precision || current_reading>a-curr_precision){
+    Serial.println("Current OK");
+  }
+  else{
+    Serial.println("Current ERROR");
+  }  
+}
+
+
+
+
+
+void output_switch() {
+  Serial.println("Output (on/off): ");
+  while(Serial.available()==0) {}
+  output = Serial.readString();
+  if (output =="on"){
+    Serial1.println("OUTPT 1");
+    delay(100);
+    Serial1.println("OUTP?");
+    while (Serial1.available()==0){}
+    int output_init=Serial1.parseInt();
+    if (output_init == 1) {
+      Serial.println("Output set up correctly.");
     }
-  delay(100);
+  }
+  if (output =="off"){
+    Serial1.println("OUTPT 0");
+    Serial1.println("OUTP?");
+    while (Serial1.available()==0){}
+    int output_init=Serial1.parseInt();
+    if (output_init == 0) {
+      Serial.println("Output set up correctly.");
+    }
+  }
+  }
+
+  
+
+
+
+void channel_select(int n) {
+  String cmd="INST OUT";
+  String n_str=String(n);
+  String tot=cmd+n_str;
+  Serial1.println(tot);
+  delay(500);
+}
+
+
+
+
+
+
+void channel_initialization(){
+  Serial1.println("*IDN?");
+  while(Serial1.available()==0){}
+  String identity = Serial1.readString();
+  Serial.print("PSU identification: ");
+  Serial.print(identity);
+  //turning the voltage on all channels to 0
+  for (int i=1; i<5; i++) {
+    channel_select(i);
+    Serial1.println("VOLT 0");
+    Serial1.println("OUTP 0");
+    delay(100);
+  //checking if the output is really off  
+    Serial1.println("OUTP?");
+    while (Serial1.available()==0){}
+    int output_init=Serial1.parseInt();
+    if (output_init != 0) {
+      Serial.println("Output error");
+      break;
+    }
+  }
 }

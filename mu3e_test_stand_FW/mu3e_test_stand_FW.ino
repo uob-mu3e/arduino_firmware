@@ -147,6 +147,8 @@ float flow_moving_avg = 0;
 float temperature = 0; //temperature which is calculated from reading the MAX31865 sensor
 
 float rel_humidity;
+float amb_temp;
+bool printed = true;
 
 unsigned long ms_prev = millis(); // timer for measurements "soft interrupts"
 unsigned long ms_display = millis(); // timer for display "soft interrupts"
@@ -175,10 +177,24 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
     //Serial.print("Temperature = "); 
     //Serial.println(thermo.temperature(RNOMINAL, RREF)); //read from the temperature sensor
     temperature = thermo.temperature(RNOMINAL, RREF);
-    
-    hih.read(); // instruct the HIH61xx to take a measurement - blocks until the measurement is ready.
-    rel_humidity = hih.getRelHumidity() / 100;
 
+
+
+    if (samplingInterval.isExpired() && !hih.isSampling()) {
+    hih.start();
+    printed = false;
+    samplingInterval.repeat();
+    //Serial.println("Sampling started (using Wire library)");
+    }
+    hih.process();
+    hih.read(); // instruct the HIH61xx to take a measurement - blocks until the measurement is ready.
+    if (hih.isFinished() && !printed) {
+    printed = true;
+    // Print saved values
+    rel_humidity = hih.getRelHumidity() / 100.0;
+    amb_temp = hih.getAmbientTemp() / 100.0;
+    }
+    
 
 
     if (flow < FlowSetpoint){ // If airflow is too low, increase fan power
@@ -416,6 +432,9 @@ void transmit_data (void) {
     Serial.print("Relative humidity: ");
     Serial.print(rel_humidity);
     Serial.print("\t");
+    Serial.print("Ambient temperature: ");
+    Serial.print(amb_temp);
+    Serial.print("/t");
     if (airflow_stable){
       Serial.print("Stable");
     }else{Serial.print("Setting...");}
@@ -445,6 +464,9 @@ void transmit_data (void) {
     
     Serial.print("RH");
     Serial.print(rel_humidity);
+
+    Serial.print("AT");
+    Serial.print(amb_temp);
     
     if (airflow_stable){
       Serial.print("K");

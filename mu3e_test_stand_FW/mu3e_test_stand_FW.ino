@@ -1,6 +1,7 @@
-
 #include <Wire.h>
 #include <Adafruit_MAX31865.h> //from MAX31865 library from Adafruit
+#include <HIH61xx.h>
+#include <AsyncDelay.h>
 
 // CRC calculation as per:
 // https://www.sensirion.com/fileadmin/user_upload/customers/sensirion/Dokumente/5_Mass_Flow_Meters/Sensirion_Mass_Flow_Meters_CRC_Calculation_V1.pdf
@@ -59,7 +60,9 @@ Adafruit_MAX31865 thermo = Adafruit_MAX31865(10);
 #define RNOMINAL  1000.0
  
 
-
+//Humidity Sensor HIH6131-021
+HIH61xx<TwoWire> hih(Wire);
+AsyncDelay samplingInterval;
 
 void setup() {
   pinMode(FanPWMPin, OUTPUT);         //set up pins
@@ -143,7 +146,9 @@ float flow_moving_avg = 0;
 
 float temperature = 0; //temperature which is calculated from reading the MAX31865 sensor
 
-
+float rel_humidity;
+float amb_temp;
+bool printed = true;
 
 unsigned long ms_prev = millis(); // timer for measurements "soft interrupts"
 unsigned long ms_display = millis(); // timer for display "soft interrupts"
@@ -172,9 +177,24 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
     //Serial.print("Temperature = "); 
     //Serial.println(thermo.temperature(RNOMINAL, RREF)); //read from the temperature sensor
     temperature = thermo.temperature(RNOMINAL, RREF);
+
+
+
+    if (samplingInterval.isExpired() && !hih.isSampling()) {
+    hih.start();
+    printed = false;
+    samplingInterval.repeat();
+    //Serial.println("Sampling started (using Wire library)");
+    }
+    hih.process();
+    hih.read(); // instruct the HIH61xx to take a measurement - blocks until the measurement is ready.
+    if (hih.isFinished() && !printed) {
+    printed = true;
+    // Print saved values
+    rel_humidity = hih.getRelHumidity() / 100.0;
+    amb_temp = hih.getAmbientTemp() / 100.0;
+    }
     
-
-
 
 
     if (flow < FlowSetpoint){ // If airflow is too low, increase fan power
@@ -361,6 +381,17 @@ uint8_t CRC_prim (uint8_t x, uint8_t crc) {
 
 
 
+//Humidity Sensor - control functions
+void powerUpErrorHandler(HIH61xx<TwoWire>& hih){
+  Serial.println("Error powering up HIH61xx device");
+}
+void readErrorHandler(HIH61xx<TwoWire>& hih){
+  Serial.println("Error reading from HIH61xx device");
+}
+
+
+
+
 
 
 
@@ -398,6 +429,12 @@ void transmit_data (void) {
     Serial.print("Setpoint: ");
     Serial.print(FlowSetpoint);
     Serial.print("\t");
+    Serial.print("Relative humidity: ");
+    Serial.print(rel_humidity);
+    Serial.print("\t");
+    Serial.print("Ambient temperature: ");
+    Serial.print(amb_temp);
+    Serial.print("/t");
     if (airflow_stable){
       Serial.print("Stable");
     }else{Serial.print("Setting...");}
@@ -423,6 +460,13 @@ void transmit_data (void) {
     
     Serial.print("S");
     Serial.print(FlowSetpoint);
+
+    
+    Serial.print("RH");
+    Serial.print(rel_humidity);
+
+    Serial.print("AT");
+    Serial.print(amb_temp);
     
     if (airflow_stable){
       Serial.print("K");

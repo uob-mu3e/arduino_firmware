@@ -10,7 +10,7 @@
 
 //HARDWARE:
 
-// PC is connected to UART0
+// PC is connected to UART0 (built in USB connector on Arduino board)
 
 // Rhode&Schwartz HMP4040 power supply is connected to UART 1
 //(via MAX232A interface chip to generate RS232 voltage levels)
@@ -23,70 +23,93 @@
 //Sensirion SFM3300-D flowmeter
 //    - I2C interface 
 //    - some example code taken from https://github.com/MyElectrons/sfm3300-arduino  
-//
+#define POLYNOMIAL 0x31     //P(x)=x^8+x^5+x^4+1 = 100110001   //magic number used in the CRC decoding for the flowmeter
+#define sfm3300i2c 0x40     //I2C address of flowmeter
+
+
 // Red, Green and Yellow status LEDs 
-//
+const int redPin = 3;       //Red LED connected to Pin 3
+const int greenPin = 5;     //Green LED connected to Pin 5
+const int yellowPin = 6;    //Yello LED connected to Pin 6
+
 //Fan is powered directly from a 12v supply (HMP4040) Controlled via UART1
 //      - fan has a PWM control signal. The duty cycle of this controls the fan speed
 //      - it has a tachometer output which outputs pulses which relate to fan speed. Not yet implemented here.
-//
-//
+int FanPWMPin = 9;          //Fan PWM control signal connected to digital pin 9
+
+
 //MAX31865 temperature sensor is connected via SPI interface. Power from 5v & GND
 //CLK - Pin 13
 //MISO - Pin 12
 //MOSI - Pin 11
 //Chip Select - Pin 10
-
-//Honeywell Humidity Sensor
-//-also SPI, same pins as above
-//Chip Select - Pin 7
-
-
-
-#define POLYNOMIAL 0x31     //P(x)=x^8+x^5+x^4+1 = 100110001   //magic number used in the CRC decoding for the flowmeter
-#define sfm3300i2c 0x40     //I2C address of flowmeter
-
-int FanPWMPin = 9;          //Fan PWM control signal connected to digital pin 9
-const int redPin = 3;       //Red LED connected to Pin 3
-const int greenPin = 5;     //Green LED connected to Pin 5
-const int yellowPin = 6;    //Yello LED connected to Pin 6
-const int humidityCS = 7;   //Chip Select for humidity sensor is connected to pin 7
-
-
-int FlowSetpoint = 30;      //desired setpoint for airflow
-int PWMValue = 50;          //initialise PWM duty cycle to 30/255. Fan doesn't run when this value is lower than mid-30s so use 30 as a minimum value.
-bool human_readable = false;    //flag to set whether to transmit human or machine readable output
-bool airflow_stable = false;    //flag to show if airflow control loop is stable
-bool broadcast_flag = true;     //flag to enable/disable auto transmission of serial output on every measurement cycle
-
-
-float volt_setpoint;  //variable to hold voltage to be requested from power supply
-float volt_reading;   //"" actual voltage read from power supply
-float volt_precision=0.01;  //precision with which compare actual voltage to setpoint
-float current_setpoint;   //variable to hold current to be requested from power supply
-float current_reading;  //actual current read from the power supply
-float current_limit=2;   //upper limit on the current
-float curr_precision=0.01; //precision with which compare actual current to setpoint
-String command;
-String parameter;
-String output;
-int channel;          //select channel of the PSU
-
-
 //---Stuff for MAX31865 temperature sensor
 // Use software SPI: CS, DI, DO, CLK
-//Adafruit_MAX31865 thermo = Adafruit_MAX31865(10, 11, 12, 13);
+//Adafruit_MAX31865 thermo = Adafruit_MAX31865(10, 11, 12, 13);   //Uncomment this to use Software SPI
 // use hardware SPI, just pass in the CS pin
-Adafruit_MAX31865 thermo = Adafruit_MAX31865(10);
+Adafruit_MAX31865 thermo = Adafruit_MAX31865(10);                 //Uncomment this to use Hardware SPI (preferred)
 // The value of the Rref resistor. Use 430.0 for PT100 and 4300.0 for PT1000
 #define RREF      4300.0
 // The 'nominal' 0-degrees-C resistance of the sensor
 // 100.0 for PT100, 1000.0 for PT1000
 #define RNOMINAL  1000.0
+
+
+//Honeywell Humidity Sensor
+//-also SPI, same CLK & Data pins as above
+const int humidityCS = 7;   //Chip Select for humidity sensor is connected to pin 7
+
+
+
  
 
 
 
+
+//Global Variables
+
+const unsigned mms = 1000; // measurement interval in ms - 'system heartbeat'-how frequently to measure inputs, calculate action to take then implement new output from control loop 
+unsigned long mt_prev = millis(); // last measurement time-stamp
+unsigned long ms_prev = millis(); // timer for measurements "soft interrupts"
+unsigned long ms_display = millis(); // timer for display "soft interrupts"
+int i;
+int setpoint_input;
+
+bool airflow_stable = false;    //flag to show if airflow control loop is stable
+bool broadcast_flag = true;     //flag to enable/disable auto transmission of serial output on every measurement cycle
+bool human_readable = false;    //flag to set whether to transmit human or machine readable output
+
+int FlowSetpoint = 30;      //desired setpoint for airflow
+int PWMValue = 50;          //initialise fan PWM duty cycle to 50/255. Fan doesn't run when this value is lower than mid-30s so use 30 as a minimum value.
+
+//Variables for flowmeter
+float flow; // current flow value in slm
+float vol;  // current volume value in (standard) cubic centimeters
+bool flow_sign; // flow sign
+bool flow_sp; // previous value of flow sign
+bool crc_error; // flag
+float flow_values[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; //an array to hold historical flow values
+int flow_array_index = 0;
+float flow_moving_avg = 0;
+
+//Variables for comms with PSU
+float volt_setpoint;        // holds voltage to be requested from power supply
+float volt_reading;         //"" actual voltage read from power supply
+float volt_precision=0.01;  //precision with which compare actual voltage to setpoint
+float current_setpoint;     //holds current to be requested from power supply
+float current_reading;      //actual current read from the power supply
+float current_limit=2;      //upper limit on the current
+float curr_precision=0.01;  //precision with which compare actual current to setpoint
+String command;             //strings used to send/receive commants to the PSU
+String parameter;
+String output;
+int channel;                //Holds value for which channel of the PSU to select
+
+float temperature = 0; //temperature which is calculated from reading the MAX31865 sensor
+
+
+
+//---------------------------------------------------------------SETUP-------------------------------------------------------------
 void setup() {
   pinMode(FanPWMPin, OUTPUT);         //set up pins
   pinMode(LED_BUILTIN, OUTPUT);
@@ -165,28 +188,6 @@ void setup() {
   
 }   //-----------------------------------END SETUP-----------------------------------
 
-
-const unsigned mms = 1000; // measurement interval in ms
-
-
-unsigned long mt_prev = millis(); // last measurement time-stamp
-float flow; // current flow value in slm
-float vol;  // current volume value in (standard) cubic centimeters
-bool flow_sign; // flow sign
-bool flow_sp; // previous value of flow sign
-bool crc_error; // flag
-float flow_values[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; //an array to hold historical flow values
-int flow_array_index = 0;
-float flow_moving_avg = 0;
-
-float temperature = 0; //temperature which is calculated from reading the MAX31865 sensor
-
-
-
-unsigned long ms_prev = millis(); // timer for measurements "soft interrupts"
-unsigned long ms_display = millis(); // timer for display "soft interrupts"
-int i;
-int setpoint_input;
 
 
 

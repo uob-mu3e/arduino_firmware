@@ -70,6 +70,7 @@ const int humidityCS = 7;   //Chip Select for humidity sensor is connected to pi
 
 const unsigned mms = 1000; // measurement interval in ms - 'system heartbeat'-how frequently to measure inputs, calculate action to take then implement new output from control loop 
 unsigned long mt_prev = millis(); // last measurement time-stamp
+unsigned long ms_curr = millis();
 unsigned long ms_prev = millis(); // timer for measurements "soft interrupts"
 unsigned long ms_display = millis(); // timer for display "soft interrupts"
 int i;
@@ -108,6 +109,7 @@ int channel;                //Holds value for which channel of the PSU to select
 float temperature = 0; //temperature which is calculated from reading the MAX31865 sensor
 
 
+char pc_command;         //Char to hold command character recieved from PC
 
 //---------------------------------------------------------------SETUP-------------------------------------------------------------
 void setup() {
@@ -194,8 +196,7 @@ void setup() {
 
 
 void loop() { //--------------------------------------------MAIN LOOP--------------------------------------------------------------------------------------
-  unsigned long ms_curr = millis();
-  char command;
+ 
   
   
 //  if (ms_curr - ms_prev >= dms) { // "soft interrupt" every dms milliseconds
@@ -273,9 +274,9 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
   } // end measurement cycle
 
  while (Serial.available() > 0) {
-  command = Serial.read();
+  pc_command = Serial.read();
 
-  if(command == '?'){
+  if(pc_command == '?'){
     Serial.println(F("Commands:"));   //F stores the strings in Flash memory, saves using RAM space.
     Serial.println(F("?: Help"));
     Serial.println(F("v: produce (V)erbose human readable output"));
@@ -292,12 +293,12 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
     Serial.println(F("p: Change (P)SU Parameter"));
     }
     
-  if (command == 'f'){
+  if (pc_command == 'f'){
     //display_flow_volume(true);
     transmit_data();
    }
 
-  if (command == 's'){
+  if (pc_command == 's'){
     Serial.print("New setpoint entered:");
     setpoint_input = Serial.parseInt();
     Serial.println(setpoint_input);
@@ -306,33 +307,33 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
     
   }
 
-  if (command == 'v'){
+  if (pc_command == 'v'){
     human_readable = true;
   }
 
-  if (command == 'm'){
+  if (pc_command == 'm'){
     human_readable = false;
   }
 
-  if (command == 'b'){
+  if (pc_command == 'b'){
     broadcast_flag = true;
   }
   
-   if (command == 'n'){
+   if (pc_command == 'n'){
     broadcast_flag = false;
   }
 
-  if (command == 'd'){
+  if (pc_command == 'd'){
      transmit_data(); // output data via serial port
   }
 
- if (command == 'p'){
+ if (pc_command == 'p'){
      ChangePSUParameter();
   }
 
  
   
-  command = 0; //reset current command to null
+  pc_command = 0; //reset current command to null
   
  } // end while serial available
 

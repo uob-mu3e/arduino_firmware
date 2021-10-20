@@ -21,13 +21,17 @@ const int PSU_FAN_CURRENT_LIM   = 2.5;
 const int PSU_MUPIX_VOLTAGE     = 1;
 const int PSU_MUPIX_CURRENT_LIM = 0.5;
 
-#define DEBUG
+const int PSU_HEATERS_R     = 8;      //total resistance of dummy heater resistor chain
+
+#define DEBUG 1
 
 
 void PSU_Init(); // Function to initialise power supply
 void PSU_Setup(); // Function to set up voltages and current limits on PSU
 void PSU_Fan_Power_On(); //Turns ON the power to the fan
 void PSU_Fan_Power_Off(); //"" "" OFF
+void PSU_Heaters_On(double); // Turn on heaters and set to given value in miliWatts
+
 
 void setup(){
   Serial.begin(9600);                 //Serial port for PC
@@ -51,6 +55,11 @@ void loop() {
   Serial1.println("SYST:BEEP");
   PSU_Fan_Power_Off();
   delay(5000);
+
+  PSU_Heaters_On(10000);
+  
+  
+  
 
   
   
@@ -96,6 +105,29 @@ void PSU_Setup(){
     Channel_Select(PSU_MUPIX_CHANNEL);
     Channel_Set(PSU_MUPIX_VOLTAGE, PSU_MUPIX_CURRENT_LIM);
    }
+
+
+void PSU_Heaters_On(double power){
+
+  double isquared;
+  double i;
+
+  isquared = power/PSU_HEATERS_R;
+  i = sqrt(isquared);
+
+  #ifdef DEBUG
+  Serial.print("Power: ");
+  Serial.print(power);
+  Serial.print(" I2: ");
+  Serial.print(isquared);
+  Serial.print(" I= ");
+  Serial.print(i);
+  Serial.println("mA");
+  #endif
+  
+  //Channel_Select(PSU_HEATERS_CHANNEL);
+  //Channel_Set(12, 1);
+}
 
 
 

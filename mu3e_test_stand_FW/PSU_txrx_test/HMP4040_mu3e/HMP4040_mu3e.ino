@@ -14,12 +14,12 @@
 #define PSU_SPARE_CHANNEL   4
 
 #define PSU_VOLT_TOLERANCE  0.01   // +/- acceptable tolerance band for voltages read back from PSU vs requested value
-#define PSU_CURR_TOLERANCE  0.01   // "" "" for current
+#define PSU_CURRENT_TOLERANCE  0.01   // "" "" for current
 
 #define PSU_FAN_VOLTAGE       12        //desired fixed supply voltages and current limits
-#define PSU_FAN_CURRENT_LIM   1
+#define PSU_FAN_CURRENT_LIM   2
 #define PSU_MUPIX_VOLTAGE     1
-#define PSU_MUPIX_CURRENT_LIM 0
+#define PSU_MUPIX_CURRENT_LIM 0.5
 
 
 void PSU_Init(); // Function to initialise power supply
@@ -32,20 +32,20 @@ Serial.begin(9600);                 //Serial port for PC
 Serial1.begin(9600);                //Serial port for PSU
 delay(500); // let serial console settle
 Serial.println("Serial Ports Enabled");
-
+PSU_Init();
+Serial.println("PSU Initialised");
+delay(1000);
   
 
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  PSU_Init();
-  Serial.println("PSU Initialised");
-  delay(10000);
+ 
 
   PSU_Setup();
   Serial.println("PSU Setup Complete");
-  delay(10000);
+  delay(1000000);
   
 }
 
@@ -83,44 +83,15 @@ void PSU_Init(){
 
 
 void PSU_Setup(){
-
-    String cmd;
-    String voltage;
-    String total;
-    String tot;
-    float volt_reading;
-    
     channel_select(PSU_FAN_CHANNEL);
-    cmd="VOLT ";
-    voltage=String(PSU_FAN_VOLTAGE);
-    tot=cmd+voltage;
-    Serial1.println(tot);
-    Serial1.println("OUTP 0");
-    delay(100);
-
-    //check whether the output voltage=setpoint
-    Serial1.println("VOLT?");
-    while (Serial1.available()==0){}    //wait for reply from PSU
-    volt_reading = Serial1.parseFloat();
-    Serial.print("Output voltage: ");
-    Serial.println(volt_reading);
-    if (volt_reading<PSU_FAN_VOLTAGE+PSU_VOLT_TOLERANCE || volt_reading>PSU_FAN_VOLTAGE-PSU_VOLT_TOLERANCE){
-      Serial.println("Voltage OK");
-    }
-    else{
-      Serial.println("Voltage ERROR");
-    }
+    channel_set(PSU_FAN_VOLTAGE, PSU_FAN_CURRENT_LIM);
 
     channel_select(PSU_MUPIX_CHANNEL);
-     cmd="VOLT ";
-     voltage=String(PSU_MUPIX_VOLTAGE);
-     tot=cmd+voltage;
-    Serial1.println(tot);
-    Serial1.println("OUTP 0");
-    delay(100);
+    channel_set(PSU_MUPIX_VOLTAGE, PSU_MUPIX_CURRENT_LIM);
+   }
 
-    
-}
+
+
 
 //
 //void set_voltage(float v) {
@@ -202,13 +173,73 @@ void PSU_Setup(){
 //
 //
 //
+
+
+//This function selects a channel on the HMP4040 
 void channel_select(int n) {
   String cmd="INST OUT";
   String n_str=String(n);
   String tot=cmd+n_str;
   Serial1.println(tot);
   delay(500);
+  Serial.print("Selected Channel: ");
+  Serial.println(n); 
   }
+
+
+
+// This function transmits a voltage setpoint and current limit to the HMP4040
+void channel_set (float voltage_setpoint, float current_limit_setpoint){
+
+float volt_reading;
+float current_reading;  
+        
+    Serial1.print("VOLT ");
+    Serial1.print(voltage_setpoint);
+    delay(100);
+    Serial1.println("OUTP 0");
+    delay(100);
+    
+    //check whether the output voltage=setpoint
+    Serial1.println("VOLT?");
+    while (Serial1.available()==0){}    //wait for reply from PSU
+    volt_reading = Serial1.parseFloat();
+    Serial.print("Output voltage: ");
+    Serial.println(volt_reading);
+    if (volt_reading<voltage_setpoint+PSU_VOLT_TOLERANCE && volt_reading>voltage_setpoint-PSU_VOLT_TOLERANCE){
+      Serial.println("Voltage OK");
+    }
+    else{
+      Serial.println("Voltage ERROR");
+    }
+
+    delay(100);
+    Serial1.print("CURR ");
+    Serial1.println(current_limit_setpoint);
+    delay(100);
+
+    //check whether the output voltage=setpoint
+    Serial1.println("CURR?");
+    while (Serial1.available()==0){}    //wait for reply from PSU
+    current_reading = Serial1.parseFloat();
+    Serial.print("Output current: ");
+    Serial.println(current_reading);
+    if (current_reading<current_limit_setpoint+PSU_CURRENT_TOLERANCE && current_reading>current_limit_setpoint-PSU_CURRENT_TOLERANCE){
+    Serial.println("Current OK");
+  }
+  else{
+    Serial.println("Current ERROR");
+  }  
+
+}
+
+
+
+
+
+
+
+
 //
 //
 //

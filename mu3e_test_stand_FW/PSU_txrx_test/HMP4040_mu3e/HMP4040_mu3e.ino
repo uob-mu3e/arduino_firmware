@@ -8,46 +8,50 @@
 
 // Rhode&Schwartz HMP4040 power supply is connected to UART 1
 //(via MAX232A interface chip to generate RS232 voltage levels)
-#define PSU_FAN_CHANNEL     1        //define what is connected to each PSU channel
-#define PSU_MUPIX_CHANNEL   2
-#define PSU_HEATERS_CHANNEL 3
-#define PSU_SPARE_CHANNEL   4
+const int PSU_FAN_CHANNEL     = 1;        //define what is connected to each PSU channel
+const int PSU_MUPIX_CHANNEL   = 2;
+const int PSU_HEATERS_CHANNEL = 3;
+const int PSU_SPARE_CHANNEL   = 4;
 
-#define PSU_VOLT_TOLERANCE  0.01   // +/- acceptable tolerance band for voltages read back from PSU vs requested value
-#define PSU_CURRENT_TOLERANCE  0.01   // "" "" for current
+const int PSU_VOLT_TOLERANCE     = 0.01;   // +/- acceptable tolerance band for voltages read back from PSU vs requested value
+const int PSU_CURRENT_TOLERANCE  = 0.01;   // "" "" for current
 
-#define PSU_FAN_VOLTAGE       12        //desired fixed supply voltages and current limits
-#define PSU_FAN_CURRENT_LIM   2
-#define PSU_MUPIX_VOLTAGE     1
-#define PSU_MUPIX_CURRENT_LIM 0.5
+const int PSU_FAN_VOLTAGE       = 12;        //desired fixed supply voltages and current limits
+const int PSU_FAN_CURRENT_LIM   = 2.5;
+const int PSU_MUPIX_VOLTAGE     = 1;
+const int PSU_MUPIX_CURRENT_LIM = 0.5;
+
+#define DEBUG
 
 
 void PSU_Init(); // Function to initialise power supply
 void PSU_Setup(); // Function to set up voltages and current limits on PSU
+void PSU_Fan_Power_On(); //Turns ON the power to the fan
+void PSU_Fan_Power_Off(); //"" "" OFF
 
-
-void setup() {
-  
-Serial.begin(9600);                 //Serial port for PC
-Serial1.begin(9600);                //Serial port for PSU
-delay(500); // let serial console settle
-Serial.println("Serial Ports Enabled");
-PSU_Init();
-Serial.println("PSU Initialised");
-delay(1000);
-  
-
-}
-
-void loop() {
-  // put your main code here, to run repeatedly:
- 
-
+void setup(){
+  Serial.begin(9600);                 //Serial port for PC
+  Serial1.begin(9600);                //Serial port for PSU
+  delay(500); // let serial console settle
+  Serial.println("Serial Ports Enabled");
+  PSU_Init();
+  Serial.println("PSU Initialised");
+  delay(1000);
   PSU_Setup();
   Serial.println("PSU Setup Complete");
-  delay(1000000);
+  delay(100);  
+  }   //END SETUP
+
+
+
+void loop() {
   
-}
+  PSU_Fan_Power_On();
+  delay(10000);
+  PSU_Fan_Power_Off();
+  delay(100000);
+  
+}  // END MAIN LOOP
 
 
 
@@ -92,87 +96,39 @@ void PSU_Setup(){
 
 
 
+void PSU_Fan_Power_On(){
+    channel_select(PSU_FAN_CHANNEL);
+    Serial.print("Output ON: ");
+    Serial1.println("OUTPT 1");
+    delay(100);
+    Serial1.println("OUTP?");
+    while (Serial1.available()==0){}
+    int output_init=Serial1.parseInt();
+    if (output_init == 1) {
+      Serial.println("OK");
+      } else {
+        Serial.println("ERR");
+      }
+    }
+  
 
-//
-//void set_voltage(float v) {
-//  String cmd="VOLT ";
-//  String volt=String(v);
-//  String tot=cmd+volt;
-//  Serial1.println(tot);
-//  delay(1000);
-//
-////check whether the output voltage=setpoint
-//  Serial1.println("VOLT?");
-//  while (Serial1.available()==0){}    //wait for reply from PSU
-//  volt_reading = Serial1.parseFloat();
-//  Serial.print("Output voltage: ");
-//  Serial.println(volt_reading);
-//  if (volt_reading<v+volt_precision || volt_reading>v-volt_precision){
-//    Serial.println("Voltage OK");
-//  }
-//  else{
-//    Serial.println("Voltage ERROR");
-//  }
-//}
-
-
-
-//
-//
-//void set_current(float a) {
-//  String cmd="CURR ";
-//  String curr=String(a);
-//  String tot=cmd+curr;
-//  Serial1.println(tot);
-//  delay(1000);
-//
-////check whether the output voltage=setpoint
-//  Serial1.println("CURR?");
-//  while (Serial1.available()==0){}    //wait for reply from PSU
-//  current_reading = Serial1.parseFloat();
-//  Serial.print("Output current: ");
-//  Serial.println(current_reading);
-//  if (current_reading<a+curr_precision || current_reading>a-curr_precision){
-//    Serial.println("Current OK");
-//  }
-//  else{
-//    Serial.println("Current ERROR");
-//  }  
-//}
-//
-//
-//
-//
-//
-//void output_switch() {
-//  Serial.println("Output (on/off): ");
-//  while(Serial.available()==0) {}
-//  output = Serial.readString();
-//  if (output =="on"){
-//    Serial1.println("OUTPT 1");
-//    delay(100);
-//    Serial1.println("OUTP?");
-//    while (Serial1.available()==0){}
-//    int output_init=Serial1.parseInt();
-//    if (output_init == 1) {
-//      Serial.println("Output set up correctly.");
-//    }
-//  }
-//  if (output =="off"){
-//    Serial1.println("OUTPT 0");
-//    Serial1.println("OUTP?");
-//    while (Serial1.available()==0){}
-//    int output_init=Serial1.parseInt();
-//    if (output_init == 0) {
-//      Serial.println("Output set up correctly.");
-//    }
-//  }
-//  }
-//
-//  
-//
-//
-//
+void PSU_Fan_Power_Off(){
+    channel_select(PSU_FAN_CHANNEL);
+    Serial.print("Output OFF: ");
+    Serial1.println("OUTPT 0");
+    delay(100);
+    Serial1.println("OUTP?");
+    while (Serial1.available()==0){}
+    int output_init=Serial1.parseInt();
+    if (output_init == 0) {
+      Serial.println("OK");
+      } else {
+        Serial.println("ERR");
+      }
+    }
+  
+       
+  
 
 
 //This function selects a channel on the HMP4040 
@@ -232,39 +188,3 @@ float current_reading;
   }  
 
 }
-
-
-
-
-
-
-
-
-//
-//
-//
-//
-//
-//
-//void channel_initialization(){
-//  Serial1.println("*IDN?");
-//  while(Serial1.available()==0){}
-//  String identity = Serial1.readString();
-//  Serial.print("PSU identification: ");
-//  Serial.print(identity);
-//  //turning the voltage on all channels to 0
-//  for (int i=1; i<5; i++) {
-//    channel_select(i);
-//    Serial1.println("VOLT 0");
-//    Serial1.println("OUTP 0");
-//    delay(100);
-//  //checking if the output is really off  
-//    Serial1.println("OUTP?");
-//    while (Serial1.available()==0){}
-//    int output_init=Serial1.parseInt();
-//    if (output_init != 0) {
-//      Serial.println("Output error");
-//      break;
-//    }
-//  }
-//}

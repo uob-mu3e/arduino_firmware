@@ -45,11 +45,14 @@ void setup(){
 
 
 void loop() {
-  
+  Serial1.println("SYST:BEEP");
   PSU_Fan_Power_On();
-  delay(10000);
+  delay(5000);
+  Serial1.println("SYST:BEEP");
   PSU_Fan_Power_Off();
-  delay(100000);
+  delay(5000);
+
+  
   
 }  // END MAIN LOOP
 
@@ -67,7 +70,7 @@ void PSU_Init(){
   Serial.print(identity);
   //turning the voltage on all channels to 0
   for (int i=1; i<5; i++) {
-    channel_select(i);
+    Channel_Select(i);
     Serial1.println("VOLT 0");
     Serial1.println("OUTP 0");
     delay(100);
@@ -87,17 +90,17 @@ void PSU_Init(){
 
 
 void PSU_Setup(){
-    channel_select(PSU_FAN_CHANNEL);
-    channel_set(PSU_FAN_VOLTAGE, PSU_FAN_CURRENT_LIM);
+    Channel_Select(PSU_FAN_CHANNEL);
+    Channel_Set(PSU_FAN_VOLTAGE, PSU_FAN_CURRENT_LIM);
 
-    channel_select(PSU_MUPIX_CHANNEL);
-    channel_set(PSU_MUPIX_VOLTAGE, PSU_MUPIX_CURRENT_LIM);
+    Channel_Select(PSU_MUPIX_CHANNEL);
+    Channel_Set(PSU_MUPIX_VOLTAGE, PSU_MUPIX_CURRENT_LIM);
    }
 
 
 
 void PSU_Fan_Power_On(){
-    channel_select(PSU_FAN_CHANNEL);
+    Channel_Select(PSU_FAN_CHANNEL);
     Serial.print("Output ON: ");
     Serial1.println("OUTPT 1");
     delay(100);
@@ -113,7 +116,7 @@ void PSU_Fan_Power_On(){
   
 
 void PSU_Fan_Power_Off(){
-    channel_select(PSU_FAN_CHANNEL);
+    Channel_Select(PSU_FAN_CHANNEL);
     Serial.print("Output OFF: ");
     Serial1.println("OUTPT 0");
     delay(100);
@@ -132,7 +135,7 @@ void PSU_Fan_Power_Off(){
 
 
 //This function selects a channel on the HMP4040 
-void channel_select(int n) {
+void Channel_Select(int n) {
   String cmd="INST OUT";
   String n_str=String(n);
   String tot=cmd+n_str;
@@ -145,7 +148,7 @@ void channel_select(int n) {
 
 
 // This function transmits a voltage setpoint and current limit to the HMP4040
-void channel_set (float voltage_setpoint, float current_limit_setpoint){
+void Channel_Set (float voltage_setpoint, float current_limit_setpoint){
 
 float volt_reading;
 float current_reading;  

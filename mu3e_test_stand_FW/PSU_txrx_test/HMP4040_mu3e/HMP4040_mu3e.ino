@@ -16,10 +16,11 @@ const int PSU_SPARE_CHANNEL   = 4;
 const int PSU_VOLT_TOLERANCE     = 0.01;   // +/- acceptable tolerance band for voltages read back from PSU vs requested value
 const int PSU_CURRENT_TOLERANCE  = 0.01;   // "" "" for current
 
-const int PSU_FAN_VOLTAGE       = 12;        //desired fixed supply voltages and current limits
-const int PSU_FAN_CURRENT_LIM   = 2.5;
-const int PSU_MUPIX_VOLTAGE     = 1;
-const int PSU_MUPIX_CURRENT_LIM = 0.5;
+const int PSU_FAN_VOLTAGE         = 12;        //desired fixed supply voltages and current limits
+const int PSU_FAN_CURRENT_LIM     = 2.5;
+const int PSU_MUPIX_VOLTAGE       = 1;
+const int PSU_MUPIX_CURRENT_LIM   = 0.5;
+const int PSU_HEATERS_VOLTAGE_LIM = 12;
 
 const int PSU_HEATERS_R     = 8;      //total resistance of dummy heater resistor chain
 
@@ -30,20 +31,20 @@ void PSU_Init(); // Function to initialise power supply
 void PSU_Setup(); // Function to set up voltages and current limits on PSU
 void PSU_Fan_Power_On(); //Turns ON the power to the fan
 void PSU_Fan_Power_Off(); //"" "" OFF
-void PSU_Heaters_On(double); // Turn on heaters and set to given value in miliWatts
-
+void PSU_Heater_Power_On(double); // Turn on heaters and set to given value in miliWatts
+void PSU_Heater_Power_Off(); // Turn off heaters
 
 void setup(){
   Serial.begin(9600);                 //Serial port for PC
   Serial1.begin(9600);                //Serial port for PSU
   delay(500); // let serial console settle
-  Serial.println("Serial Ports Enabled");
+  Serial.println("SERIAL PORTS ENABLED");
   PSU_Init();
-  Serial.println("PSU Initialised");
-  delay(1000);
+  Serial.println("PSU INITIALISED");
+  delay(5000);
   PSU_Setup();
-  Serial.println("PSU Setup Complete");
-  delay(100);  
+  Serial.println("PSU SETUP COMPLETE");
+  delay(5000);  
   }   //END SETUP
 
 
@@ -52,11 +53,13 @@ void loop() {
   Serial1.println("SYST:BEEP");
   PSU_Fan_Power_On();
   delay(5000);
-  Serial1.println("SYST:BEEP");
-  PSU_Fan_Power_Off();
-  delay(5000);
+//  Serial1.println("SYST:BEEP");
+//  PSU_Fan_Power_Off();
+//  delay(5000);
 
-  PSU_Heaters_On(10000);
+  PSU_Heater_Power_On(10000);
+  delay (10000);
+  PSU_Heater_Power_Off();
   
   
   
@@ -107,12 +110,12 @@ void PSU_Setup(){
    }
 
 
-void PSU_Heaters_On(double power){
+void PSU_Heater_Power_On(double power){  //power is in mA
 
-  double isquared;
-  double i;
+  float isquared;
+  float i;
 
-  isquared = power/PSU_HEATERS_R;
+  isquared = (power/1000)/PSU_HEATERS_R;
   i = sqrt(isquared);
 
   #ifdef DEBUG
@@ -122,13 +125,18 @@ void PSU_Heaters_On(double power){
   Serial.print(isquared);
   Serial.print(" I= ");
   Serial.print(i);
-  Serial.println("mA");
+  Serial.println("A");
   #endif
   
-  //Channel_Select(PSU_HEATERS_CHANNEL);
-  //Channel_Set(12, 1);
+  Channel_Select(PSU_HEATERS_CHANNEL);
+  Channel_Set(PSU_HEATERS_VOLTAGE_LIM, i);
 }
 
+
+void PSU_Heater_Power_Off(){
+  Channel_Select(PSU_HEATERS_CHANNEL);
+  Channel_Set(0, 0);
+}
 
 
 void PSU_Fan_Power_On(){

@@ -51,8 +51,8 @@ void setup(){
 
 void loop() {
   Serial1.println("SYST:BEEP");
-  PSU_Fan_Power_On();
-  delay(5000);
+ // PSU_Fan_Power_On();
+ // delay(5000);
 //  Serial1.println("SYST:BEEP");
 //  PSU_Fan_Power_Off();
 //  delay(5000);
@@ -83,8 +83,11 @@ void PSU_Init(){
   //turning the voltage on all channels to 0
   for (int i=1; i<5; i++) {
     Channel_Select(i);
-    Serial1.println("VOLT 0");
     Serial1.println("OUTP 0");
+    delay(100);
+    Serial1.println("VOLT 0");
+    delay(100);
+    Serial1.println("CURR 0");
     delay(100);
   //checking if the output is really off  
     Serial1.println("OUTP?");

@@ -24,7 +24,8 @@ const float PSU_HEATERS_VOLTAGE_LIM = 12;
 
 const float PSU_HEATERS_R     = 8;      //total resistance of dummy heater resistor chain
 
-//#define DEBUG
+                 //DEBUG mode will print lots of info out to the serial port while the system is running. 
+#define DEBUG    // comment this line out to disable debug mode
 
 
 void PSU_Init(); // Function to initialise power supply
@@ -39,7 +40,8 @@ void setup(){
   Serial1.begin(9600);                //Serial port for PSU
   delay(500); // let serial console settle
     #ifdef DEBUG
-    Serial.println("SERIAL PORTS ENABLED");#endif
+    Serial.println("SERIAL PORTS ENABLED");
+    
     #endif
     PSU_Init();
     #ifdef DEBUG
@@ -275,8 +277,8 @@ float current_reading;
     }
     else{
       #ifdef DEBUG
-      Serial.println("Voltage ERROR")
-      #endif;
+      Serial.println("Voltage ERROR");
+      #endif
     }
 
     delay(100);

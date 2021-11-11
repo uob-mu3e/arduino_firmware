@@ -59,16 +59,28 @@ void setup(){
 
 
 void loop() {
+  
+  PSU_Fan_Power_On();
   Serial1.println("SYST:BEEP");
- // PSU_Fan_Power_On();
- // delay(5000);
-//  Serial1.println("SYST:BEEP");
-//  PSU_Fan_Power_Off();
-//  delay(5000);
-
+  
+  delay(1000);
+  
   PSU_Heater_Power_On(10000);
-  delay (10000);
+  Serial1.println("SYST:BEEP");
+  
+  delay(10000);
+    
   PSU_Heater_Power_Off();
+  Serial1.println("SYST:BEEP");
+  
+  delay (1000);
+  
+  PSU_Fan_Power_Off();
+  Serial1.println("SYST:BEEP");
+  delay(5000);
+  
+  
+  
   
   
   

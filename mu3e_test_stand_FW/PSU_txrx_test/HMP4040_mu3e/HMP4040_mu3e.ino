@@ -16,13 +16,13 @@ const int PSU_SPARE_CHANNEL   = 4;
 const float PSU_VOLT_TOLERANCE     = 0.05;   // +/- acceptable tolerance band for voltages read back from PSU vs requested value
 const float PSU_CURRENT_TOLERANCE  = 0.05;   // "" "" for current
 
-const int PSU_FAN_VOLTAGE         = 12;        //desired fixed supply voltages and current limits
-const int PSU_FAN_CURRENT_LIM     = 2.5;
-const int PSU_MUPIX_VOLTAGE       = 1;
-const int PSU_MUPIX_CURRENT_LIM   = 0.5;
-const int PSU_HEATERS_VOLTAGE_LIM = 12;
+const float PSU_FAN_VOLTAGE         = 12;        //desired fixed supply voltages and current limits
+const float PSU_FAN_CURRENT_LIM     = 2.5;
+const float PSU_MUPIX_VOLTAGE       = 1;
+const float PSU_MUPIX_CURRENT_LIM   = 0.5;
+const float PSU_HEATERS_VOLTAGE_LIM = 12;
 
-const int PSU_HEATERS_R     = 8;      //total resistance of dummy heater resistor chain
+const float PSU_HEATERS_R     = 8;      //total resistance of dummy heater resistor chain
 
 #define DEBUG 1
 
@@ -113,7 +113,7 @@ void PSU_Setup(){
    }
 
 
-void PSU_Heater_Power_On(double power){  //power is in mA
+void PSU_Heater_Power_On(double power){  //power is in mW
 
   float isquared;
   float i;
@@ -133,12 +133,33 @@ void PSU_Heater_Power_On(double power){  //power is in mA
   
   Channel_Select(PSU_HEATERS_CHANNEL);
   Channel_Set(PSU_HEATERS_VOLTAGE_LIM, i);
+  Serial.print("Heater ON: ");
+  Serial1.println("OUTPT 1");
+  delay(100);
+  Serial1.println("OUTP?");
+  while (Serial1.available()==0){}
+  int output_init=Serial1.parseInt();
+  if (output_init == 1) {
+    Serial.println("OK");
+    } else {
+      Serial.println("ERR");
+    }
 }
 
 
 void PSU_Heater_Power_Off(){
   Channel_Select(PSU_HEATERS_CHANNEL);
-  Channel_Set(0, 0);
+  Serial.print("Heater OFF: ");
+  Serial1.println("OUTPT 0");
+  delay(100);
+  Serial1.println("OUTP?");
+  while (Serial1.available()==0){}
+  int output_init=Serial1.parseInt();
+  if (output_init == 0) {
+    Serial.println("OK");
+    } else {
+      Serial.println("ERR");
+    }
 }
 
 

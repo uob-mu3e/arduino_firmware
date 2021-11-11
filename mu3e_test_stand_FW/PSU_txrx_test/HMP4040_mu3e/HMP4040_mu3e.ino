@@ -13,8 +13,8 @@ const int PSU_MUPIX_CHANNEL   = 2;
 const int PSU_HEATERS_CHANNEL = 3;
 const int PSU_SPARE_CHANNEL   = 4;
 
-const int PSU_VOLT_TOLERANCE     = 0.01;   // +/- acceptable tolerance band for voltages read back from PSU vs requested value
-const int PSU_CURRENT_TOLERANCE  = 0.01;   // "" "" for current
+const float PSU_VOLT_TOLERANCE     = 0.05;   // +/- acceptable tolerance band for voltages read back from PSU vs requested value
+const float PSU_CURRENT_TOLERANCE  = 0.05;   // "" "" for current
 
 const int PSU_FAN_VOLTAGE         = 12;        //desired fixed supply voltages and current limits
 const int PSU_FAN_CURRENT_LIM     = 2.5;
@@ -208,7 +208,7 @@ float current_reading;
     volt_reading = Serial1.parseFloat();
     Serial.print("Output voltage: ");
     Serial.println(volt_reading);
-    if (volt_reading<voltage_setpoint+PSU_VOLT_TOLERANCE && volt_reading>voltage_setpoint-PSU_VOLT_TOLERANCE){
+    if (volt_reading<(voltage_setpoint+PSU_VOLT_TOLERANCE) && volt_reading>(voltage_setpoint-PSU_VOLT_TOLERANCE)){
       Serial.println("Voltage OK");
     }
     else{

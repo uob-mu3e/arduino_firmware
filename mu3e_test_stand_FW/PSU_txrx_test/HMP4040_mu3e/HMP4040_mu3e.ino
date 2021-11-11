@@ -24,7 +24,7 @@ const float PSU_HEATERS_VOLTAGE_LIM = 12;
 
 const float PSU_HEATERS_R     = 8;      //total resistance of dummy heater resistor chain
 
-#define DEBUG 1
+//#define DEBUG
 
 
 void PSU_Init(); // Function to initialise power supply
@@ -38,13 +38,20 @@ void setup(){
   Serial.begin(9600);                 //Serial port for PC
   Serial1.begin(9600);                //Serial port for PSU
   delay(500); // let serial console settle
-  Serial.println("SERIAL PORTS ENABLED");
-  PSU_Init();
-  Serial.println("PSU INITIALISED");
-  delay(5000);
-  PSU_Setup();
-  Serial.println("PSU SETUP COMPLETE");
-  delay(5000);  
+    #ifdef DEBUG
+    Serial.println("SERIAL PORTS ENABLED");#endif
+    #endif
+    PSU_Init();
+    #ifdef DEBUG
+    Serial.println("PSU INITIALISED");
+    #endif
+    delay(1000);
+    PSU_Setup();
+    #ifdef DEBUG
+    Serial.println("PSU SETUP COMPLETE");
+    #endif
+    delay(1000);  
+   
   }   //END SETUP
 
 
@@ -78,8 +85,10 @@ void PSU_Init(){
   Serial1.println("*IDN?");
   while(Serial1.available()==0){}
   String identity = Serial1.readString();
+  #ifdef DEBUG
   Serial.print("PSU identification: ");
   Serial.print(identity);
+  #endif
   //turning the voltage on all channels to 0
   for (int i=1; i<5; i++) {
     Channel_Select(i);
@@ -94,7 +103,9 @@ void PSU_Init(){
     while (Serial1.available()==0){}
     int output_init=Serial1.parseInt();
     if (output_init != 0) {
+      #ifdef DEBUG
       Serial.println("Output error");
+      #endif
       break;
     }
   }
@@ -133,64 +144,88 @@ void PSU_Heater_Power_On(double power){  //power is in mW
   
   Channel_Select(PSU_HEATERS_CHANNEL);
   Channel_Set(PSU_HEATERS_VOLTAGE_LIM, i);
+  #ifdef DEBUG
   Serial.print("Heater ON: ");
+  #endif
   Serial1.println("OUTPT 1");
   delay(100);
   Serial1.println("OUTP?");
   while (Serial1.available()==0){}
   int output_init=Serial1.parseInt();
   if (output_init == 1) {
+    #ifdef DEBUG
     Serial.println("OK");
+    #endif
     } else {
+      #ifdef DEBUG
       Serial.println("ERR");
+      #endif
     }
 }
 
 
 void PSU_Heater_Power_Off(){
   Channel_Select(PSU_HEATERS_CHANNEL);
+  #ifdef DEBUG
   Serial.print("Heater OFF: ");
+  #endif
   Serial1.println("OUTPT 0");
   delay(100);
   Serial1.println("OUTP?");
   while (Serial1.available()==0){}
   int output_init=Serial1.parseInt();
   if (output_init == 0) {
+    #ifdef DEBUG
     Serial.println("OK");
+    #endif
     } else {
+      #ifdef DEBUG
       Serial.println("ERR");
+      #endif
     }
 }
 
 
 void PSU_Fan_Power_On(){
     Channel_Select(PSU_FAN_CHANNEL);
+    #ifdef DEBUG
     Serial.print("Output ON: ");
+    #endif
     Serial1.println("OUTPT 1");
     delay(100);
     Serial1.println("OUTP?");
     while (Serial1.available()==0){}
     int output_init=Serial1.parseInt();
     if (output_init == 1) {
+      #ifdef DEBUG
       Serial.println("OK");
+      #endif
       } else {
+        #ifdef DEBUG
         Serial.println("ERR");
+        #endif DEBUG
       }
     }
   
 
 void PSU_Fan_Power_Off(){
     Channel_Select(PSU_FAN_CHANNEL);
+    #ifdef DEBUG
     Serial.print("Output OFF: ");
+    #endif
     Serial1.println("OUTPT 0");
     delay(100);
     Serial1.println("OUTP?");
     while (Serial1.available()==0){}
     int output_init=Serial1.parseInt();
     if (output_init == 0) {
+      #ifdef DEBUG
       Serial.println("OK");
+      #endif
       } else {
+        #ifdef DEBUG
         Serial.println("ERR");
+        #endif
       }
     }
   
@@ -205,8 +240,10 @@ void Channel_Select(int n) {
   String tot=cmd+n_str;
   Serial1.println(tot);
   delay(500);
+  #ifdef DEBUG
   Serial.print("Selected Channel: ");
   Serial.println(n); 
+  #endif
   }
 
 
@@ -227,13 +264,19 @@ float current_reading;
     Serial1.println("VOLT?");
     while (Serial1.available()==0){}    //wait for reply from PSU
     volt_reading = Serial1.parseFloat();
+    #ifdef DEBUG
     Serial.print("Output voltage: ");
     Serial.println(volt_reading);
+    #endif
     if (volt_reading<(voltage_setpoint+PSU_VOLT_TOLERANCE) && volt_reading>(voltage_setpoint-PSU_VOLT_TOLERANCE)){
+      #ifdef DEBUG
       Serial.println("Voltage OK");
+      #endif
     }
     else{
-      Serial.println("Voltage ERROR");
+      #ifdef DEBUG
+      Serial.println("Voltage ERROR")
+      #endif;
     }
 
     delay(100);
@@ -245,13 +288,19 @@ float current_reading;
     Serial1.println("CURR?");
     while (Serial1.available()==0){}    //wait for reply from PSU
     current_reading = Serial1.parseFloat();
+    #ifdef DEBUG
     Serial.print("Output current: ");
     Serial.println(current_reading);
+    #endif
     if (current_reading<current_limit_setpoint+PSU_CURRENT_TOLERANCE && current_reading>current_limit_setpoint-PSU_CURRENT_TOLERANCE){
-    Serial.println("Current OK");
-  }
-  else{
-    Serial.println("Current ERROR");
-  }  
+      #ifdef DEBUG
+      Serial.println("Current OK");
+      #endif
+    }
+      else{
+        #ifdef DEBUG
+        Serial.println("Current ERROR");
+        #endif
+      }  
 
 }

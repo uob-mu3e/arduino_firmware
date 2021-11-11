@@ -8,6 +8,9 @@
 
 // Rhode&Schwartz HMP4040 power supply is connected to UART 1
 //(via MAX232A interface chip to generate RS232 voltage levels)
+
+//#include "HMP_4040.h"
+
 const int PSU_FAN_CHANNEL     = 1;        //define what is connected to each PSU channel
 const int PSU_MUPIX_CHANNEL   = 2;
 const int PSU_HEATERS_CHANNEL = 3;
@@ -217,7 +220,7 @@ void PSU_Fan_Power_On(){
       } else {
         #ifdef DEBUG
         Serial.println("ERR");
-        #endif DEBUG
+        #endif 
       }
     }
   

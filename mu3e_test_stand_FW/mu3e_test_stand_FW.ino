@@ -1,7 +1,9 @@
+
 #include <Wire.h>
 #include <Adafruit_MAX31865.h> //from MAX31865 library from Adafruit
 #include <HIH61xx.h>
 #include <AsyncDelay.h>
+#include <PID_v1.h>
 
 // CRC calculation as per:
 // https://www.sensirion.com/fileadmin/user_upload/customers/sensirion/Dokumente/5_Mass_Flow_Meters/Sensirion_Mass_Flow_Meters_CRC_Calculation_V1.pdf
@@ -29,7 +31,14 @@
 //-also SPI, same pins as above
 //Chip Select - Pin 7
 
+//Define Variables we'll be connecting to
+double Setpoint, Input, Output;
 
+double aggKp=1230, aggKi=28.6, aggKd=87.4;
+double consKp=600, consKi=50, consKd=87;
+//Specify the links and initial tuning parameters
+
+PID myPID(&Input, &Output, &Setpoint, consKp, consKi, consKd, REVERSE);
 
 #define POLYNOMIAL 0x31     //P(x)=x^8+x^5+x^4+1 = 100110001   //magic number used in the CRC decoding for the flowmeter
 #define sfm3300i2c 0x40     //I2C address of flowmeter
@@ -39,14 +48,10 @@ const int redPin = 3;       //Red LED connected to Pin 3
 const int greenPin = 5;     //Green LED connected to Pin 5
 const int yellowPin = 6;    //Yello LED connected to Pin 6
 const int humidityCS = 7;   //Chip Select for humidity sensor is connected to pin 7
-
-
-int FlowSetpoint = 30;      //desired setpoint for airflow
 int PWMValue = 50;          //initialise PWM duty cycle to 30/255. Fan doesn't run when this value is lower than mid-30s so use 30 as a minimum value.
 bool human_readable = false;    //flag to set whether to transmit human or machine readable output
 bool airflow_stable = false;    //flag to show if airflow control loop is stable
 bool broadcast_flag = true;     //flag to enable/disable auto transmission of serial output on every measurement cycle
-
 
 //---Stuff for MAX31865 temperature sensor
 // Use software SPI: CS, DI, DO, CLK
@@ -59,10 +64,10 @@ Adafruit_MAX31865 thermo = Adafruit_MAX31865(10);
 // 100.0 for PT100, 1000.0 for PT1000
 #define RNOMINAL  1000.0
  
-
 //Humidity Sensor HIH6131-021
 HIH61xx<TwoWire> hih(Wire);
 AsyncDelay samplingInterval;
+
 
 void setup() {
   pinMode(FanPWMPin, OUTPUT);         //set up pins
@@ -82,7 +87,7 @@ void setup() {
   Wire.write(0x20);
   Wire.write(0x00);
   Wire.endTransmission();
-  delay(100);
+  delay(1000);
 
 #if 1
   Wire.beginTransmission(sfm3300i2c);
@@ -109,7 +114,7 @@ void setup() {
   Wire.write(0x00);
   Wire.endTransmission();
 
-  delay(100);
+  delay(1000);
   /* // discard the first chunk of data that is always 0xFF
   Wire.requestFrom(sfm3300i2c,3);
   Wire.read();
@@ -122,18 +127,22 @@ void setup() {
   analogWrite(redPin, 125);
   //delay(3000);
 
-
   //setup for the MAX31865 temperature sensor
   thermo.begin(MAX31865_2WIRE);  // set to 2,3or4WIRE as necessary
   //thermo.begin(MAX31865_3WIRE);
   //thermo.begin(MAX31865_4WIRE);  
-  
+
+  //initialize the variables we're linked to
+  Setpoint = 30;
+
+  //turn the PID on
+  myPID.SetMode(AUTOMATIC);
+  //SetOutputLimits(30, 255);
+  myPID.SetOutputLimits(30, 135);
+  //compression heating after 145 pwm
 }   //-----------------------------------END SETUP-----------------------------------
 
-
-const unsigned mms = 1000; // measurement interval in ms
-
-
+const unsigned mms = 100; // measurement interval in ms
 unsigned long mt_prev = millis(); // last measurement time-stamp
 float flow; // current flow value in slm
 float vol;  // current volume value in (standard) cubic centimeters
@@ -143,114 +152,110 @@ bool crc_error; // flag
 float flow_values[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; //an array to hold historical flow values
 int flow_array_index = 0;
 float flow_moving_avg = 0;
-
 float temperature = 0; //temperature which is calculated from reading the MAX31865 sensor
-
 float rel_humidity;
 float amb_temp;
 bool printed = true;
-
 unsigned long ms_prev = millis(); // timer for measurements "soft interrupts"
 unsigned long ms_display = millis(); // timer for display "soft interrupts"
 int i;
-int setpoint_input;
-
-
-
+double setpoint_input;
 
 
 void loop() { //--------------------------------------------MAIN LOOP--------------------------------------------------------------------------------------
   unsigned long ms_curr = millis();
   char command;
-  
-  
 //  if (ms_curr - ms_prev >= dms) { // "soft interrupt" every dms milliseconds
 //    ms_prev = ms_curr;
 //    SFM_measure();
 //  }
-
   if (ms_curr - ms_display >= mms) { // "soft interrupt" every mms milliseconds
     ms_display = ms_curr;
-    
     SFM_measure();                    //read from the flowmeter
-    
     //Serial.print("Temperature = "); 
     //Serial.println(thermo.temperature(RNOMINAL, RREF)); //read from the temperature sensor
     temperature = thermo.temperature(RNOMINAL, RREF);
-
-
-
     if (samplingInterval.isExpired() && !hih.isSampling()) {
-    hih.start();
-    printed = false;
-    samplingInterval.repeat();
-    //Serial.println("Sampling started (using Wire library)");
+      hih.start();
+      printed = false;
+      samplingInterval.repeat();
+      //Serial.println("Sampling started (using Wire library)");
     }
     hih.process();
     hih.read(); // instruct the HIH61xx to take a measurement - blocks until the measurement is ready.
     if (hih.isFinished() && !printed) {
-    printed = true;
-    // Print saved values
-    rel_humidity = hih.getRelHumidity() / 100.0;
-    amb_temp = hih.getAmbientTemp() / 100.0;
+      printed = true;
+      // Print saved values
+      rel_humidity = hih.getRelHumidity() / 100.0;
+      amb_temp = hih.getAmbientTemp() / 100.0;
     }
-    
-
-
-    if (flow < FlowSetpoint){ // If airflow is too low, increase fan power
-      if(PWMValue < 255){     // prevent PWM value overflowing
-        PWMValue += 1;
+    Input = (double)temperature;
+    double gap = abs(Setpoint-Input); //distance away from setpoint
+    if (temperature>amb_temp+1){
+      //  if(gap<0.05){
+      //    myPID.Compute();
+      //    if (temperature >Setpoint){ // If airflow is too low, increase fan power
+      //      if(PWMValue < 135){     // prevent PWM value overflowing
+      //        PWMValue += 1;
+      //      }
+      //      else PWMValue = 135;
+      //      }
+      //
+      //    if (temperature < Setpoint){ // If airflow value is too high. decrease fan power
+      //      if(PWMValue > 30){      //prevent pwm value underflowing. Fan does not run at all with very low PWM values so use 30/255 as a floor
+      //        PWMValue -= 1;
+      //      } 
+      //      else PWMValue =30;
+      //      }
+      //    } 
+      //  
+      if(gap<0.1){
+        //we're close to setpoint, use conservative tuning parameters
+        myPID.SetTunings(consKp, consKi, consKd);
+        myPID.Compute();
+        PWMValue = Output;
       }
-      else PWMValue = 255;
+      else{
+        //we're far from setpoint, use aggressive tuning parameters
+        myPID.SetTunings(aggKp, aggKi, aggKd);
+        myPID.Compute();
+        PWMValue = Output;
       }
-
-    if (flow > FlowSetpoint){ // If airflow value is too high. decrease fan power
-      if(PWMValue > 30){      //prevent pwm value underflowing. Fan does not run at all with very low PWM values so use 30/255 as a floor
-        PWMValue -= 1;
-      } 
-      else PWMValue =30;
-      }
-
-    if(FlowSetpoint == 0){
-      PWMValue = 30;
     }
-   analogWrite(FanPWMPin, PWMValue);
+    analogWrite(FanPWMPin, PWMValue);
+    flow_values[flow_array_index]=flow;  //record the current flow value in the array
+    flow_array_index++;
+    if (flow_array_index == 10){
+      flow_array_index = 0;
+    }
 
-   flow_values[flow_array_index]=flow;  //record the current flow value in the array
-   flow_array_index++;
-   if (flow_array_index == 10){
-    flow_array_index = 0;
-   }
-
-   //calculate moving windowed average 
-   flow_moving_avg = 0;
-   for (i=0; i<10; i++){
-    flow_moving_avg += flow_values[i];
-   }
-  flow_moving_avg /= 10;
-
-   if (flow_moving_avg < (FlowSetpoint+1)){
-    if (flow_moving_avg > (FlowSetpoint-1)){  //if average of last 10 flow readings is setpoint +/- 1 then   // turn the LED on to show stable airflow
+    //calculate moving windowed average 
+    flow_moving_avg = 0;
+    for (i=0; i<10; i++){
+      flow_moving_avg += flow_values[i];
+    }
+    flow_moving_avg /= 10;
+    if (flow_moving_avg < (Setpoint+1)){
+      if (flow_moving_avg > (Setpoint-1)){  //if average of last 10 flow readings is setpoint +/- 1 then   // turn the LED on to show stable airflow
         digitalWrite(redPin, LOW);            //turn off red LED
         analogWrite(greenPin, 125);           // turn the green LED on to show stable airflow
         airflow_stable = true;                //and flag the system as stable
-        
-    }else {
-      digitalWrite(greenPin, LOW);    // If average flow is <(setpoint-1) then turn off green LED 
-      analogWrite(redPin, 125);       //and light red LED
-      airflow_stable = false;         //and flag system as not stable
+      }
+      else {
+        digitalWrite(greenPin, LOW);    // If average flow is <(setpoint-1) then turn off green LED 
+        analogWrite(redPin, 125);       //and light red LED
+        airflow_stable = false;         //and flag system as not stable
+      }
     }
-   }else {
+    else {
       digitalWrite(greenPin, LOW);    //If average flow is <(setpoint+1) then turn off green LED 
       analogWrite(redPin, 125);       //and light red LED
       airflow_stable = false;         //and flag system as not stable
-   }
+    }
+    if (broadcast_flag){  
+      transmit_data(); // output data via serial port
+    }
 
-
- if (broadcast_flag){  
- transmit_data(); // output data via serial port
- }
-   
   } // end measurement cycle
 
  while (Serial.available() > 0) {
@@ -270,8 +275,7 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
     Serial.println(F("h: display (H)umidity measurement - not implememted yet"));
     Serial.println(F("b: (B)roadcast measurements"));
     Serial.println(F("n: (N)o broadcasting"));
-    
-    }
+  }
     
   if (command == 'f'){
     //display_flow_volume(true);
@@ -280,11 +284,10 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
 
   if (command == 's'){
     Serial.print("New setpoint entered:");
-    setpoint_input = Serial.parseInt();
+    setpoint_input = (double)Serial.parseFloat();
     Serial.println(setpoint_input);
-    FlowSetpoint = constrain(setpoint_input, 0, 200);
-    Serial.println(FlowSetpoint);
-    
+    Setpoint = constrain(setpoint_input, 0, 1000);
+    Serial.println(Setpoint);
   }
 
   if (command == 'v'){
@@ -306,20 +309,10 @@ void loop() { //--------------------------------------------MAIN LOOP-----------
   if (command == 'd'){
      transmit_data(); // output data via serial port
   }
-
- 
-
- 
   
   command = 0; //reset current command to null
-  
  } // end while serial available
-
-  
 } //-------------------------------------end main loop---------------------------------
-
-
-
 
 
 //-----Reads from Flowmeter and converts into SFM units
@@ -351,20 +344,11 @@ void SFM_measure() {
     // *1000 --> convert liters to cubic centimeters
     // /1000 --> we count time in milliseconds
     // *mt_delta --> current measurement time delta in milliseconds
-  } else {
+  }
+  else {
     // report i2c read error
   }
 }
-
-
-
-
-
-
-
-
-
-
 
 
 //-----Checks CRC of received flowmeter data.
@@ -379,20 +363,15 @@ uint8_t CRC_prim (uint8_t x, uint8_t crc) {
 }
 
 
-
-
 //Humidity Sensor - control functions
 void powerUpErrorHandler(HIH61xx<TwoWire>& hih){
   Serial.println("Error powering up HIH61xx device");
 }
+
+
 void readErrorHandler(HIH61xx<TwoWire>& hih){
   Serial.println("Error reading from HIH61xx device");
 }
-
-
-
-
-
 
 
 void display_flow_volume(bool force_d = false) {
@@ -410,7 +389,7 @@ void display_flow_volume(bool force_d = false) {
 
 
 void transmit_data (void) {
-   if (human_readable){
+  if (human_readable){
     Serial.print("Temp: ");
     Serial.print(temperature);
     Serial.print("\t");
@@ -427,7 +406,7 @@ void transmit_data (void) {
     Serial.print(flow_moving_avg);
     Serial.print("\t");
     Serial.print("Setpoint: ");
-    Serial.print(FlowSetpoint);
+    Serial.print(Setpoint);
     Serial.print("\t");
     Serial.print("Relative humidity: ");
     Serial.print(rel_humidity);
@@ -437,13 +416,15 @@ void transmit_data (void) {
     Serial.print("/t");
     if (airflow_stable){
       Serial.print("Stable");
-    }else{Serial.print("Setting...");}
+    }
+    else{
+      Serial.print("Setting...");
+    }
     Serial.print("\t");
-    
     Serial.println(crc_error?" CRC error":"");
-   }
+  }
 
-   else{
+  else{
     Serial.print("T");
     Serial.print(temperature);
     Serial.print("F");
@@ -459,9 +440,8 @@ void transmit_data (void) {
     Serial.print(flow_moving_avg);
     
     Serial.print("S");
-    Serial.print(FlowSetpoint);
+    Serial.print(Setpoint);
 
-    
     Serial.print("RH");
     Serial.print(rel_humidity);
 
@@ -470,9 +450,10 @@ void transmit_data (void) {
     
     if (airflow_stable){
       Serial.print("K");
-    }else{Serial.print("N");}
-    
-    
+    }
+    else{
+      Serial.print("N");
+    }
     Serial.println(crc_error?" CRC error":"");
-   }
+  }
 }

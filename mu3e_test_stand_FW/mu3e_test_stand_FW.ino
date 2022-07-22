@@ -138,8 +138,10 @@ float current_setpoint = current_limit + 1;
 // precision with which compare actual current to setpoint
 float curr_precision = 0.01;
 // strings used to send/receive commands to the PSU
-String command;
-String parameter;
+const byte char_length = 8;
+char parameter[char_length];
+bool new_data = false;
+// String parameter;
 String output;
 // Holds value for which channel of the PSU to select
 int channel;
@@ -419,38 +421,66 @@ void loop() {
 // - Sets the value to the corresponding parameter
 void change_psu_parameter() {
     Serial.println("Select parameter to change (voltage/current): ");
-    while (Serial.available() > 0) {
-        parameter = Serial.readString();
-    }
+    static byte idx = 0;
+    char end_marker = "\n";
+    char receiver;
 
-    // -VOLTAGE-
-    if (parameter == "voltage") {
-        Serial.println("Set channel voltage: ");
-        while (Serial.available() == 0) {
-            // do nothing to wait for 1 keypress
+    // Take in multibyte data. Reference:
+    // - https://forum.arduino.cc/t/serial-input-basics-updated/382007
+    while (Serial.available() > 0 && new_data == false) {
+        receiver = Serial.read();
+
+        if (receiver != end_marker) {
+            parameter[idx] = receiver;
+            idx++;
+            if (idx >= char_length) {
+                idx = char_length - 1;
+            }
         }
-        volt_setpoint = Serial.parseFloat();
-        set_voltage(volt_setpoint);
-        delay(500);
+
+        else {
+            parameter[idx] = '\0';
+            idx = 0;
+            new_data = true;
+        }
     }
 
-    // -CURRENT-
-    if (parameter == "current") {
-        Serial.println("Set channel current: ");
-        // Current value input not okay: loop until it's under the limit
-        while (true) {
+    if (new_data == true) {
+        // -SET VOLTAGE-
+        if (parameter == "voltage") {
+            Serial.println("Set channel voltage: ");
             while (Serial.available() == 0) {
                 // do nothing to wait for 1 keypress
             }
-            current_setpoint = Serial.parseFloat();
-            if current_setpoint
-                <= current_limit{break} Serial.print(
-                       "Current too high. Pick a value below ");
-            Serial.print(current_limit);
-            Serial.println(" amps:");
+            volt_setpoint = Serial.parseFloat();
+            set_voltage(volt_setpoint);
+            delay(500);
         }
-        set_current(current_setpoint);
-        delay(500);
+
+        // -SET CURRENT-
+        if (parameter == "current") {
+            Serial.println("Set channel current: ");
+            // Current value input not okay: loop until it's under the limit
+            while (true) {
+                while (Serial.available() == 0) {
+                    // do nothing to wait for 1 keypress
+                }
+                current_setpoint = Serial.parseFloat();
+                if (current_setpoint <= current_limit) {
+                    break;
+                }
+                Serial.print("Current too high. Pick a value below ");
+                Serial.print(current_limit);
+                Serial.println(" amps:");
+            }
+            set_current(current_setpoint);
+            delay(500);
+        }
+
+        else {
+            Serial.println("Choice not recognised.");
+        }
+        new_data = false;
     }
 }
 

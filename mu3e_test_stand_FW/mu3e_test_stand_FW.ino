@@ -1,3 +1,4 @@
+// vim:set ft=cpp:
 // ===[ABSTRACT]===
 // CRC calculation as per:
 // -
@@ -257,7 +258,7 @@ void loop() {
     if (ms_curr - ms_display >= mms) {
         ms_display = ms_curr;
         // read from the flowmeter TODO: how does it know to write to `flow`????
-        SFM_measure();
+        sfm_measure();
 
         temperature = thermo.temperature(RNOMINAL, RREF);
         if (samplingInterval.isExpired() && !hih.isSampling()) {
@@ -399,7 +400,7 @@ void loop() {
         }
 
         if (pc_command == 'p') {
-            ChangePSUParameter();
+            change_psu_parameter();
         }
 
         pc_command = 0;  // reset current command to null
@@ -411,12 +412,12 @@ void loop() {
 
 // ===[OTHER FUNCTIONS]===
 
-// ChangePSUParameter()
+// change_psu_parameter()
 // - Called when command "p" is parsed from loop()
 // - Reads the parameter to change (voltage/current)
 // - Asks for value
 // - Sets the value to the corresponding parameter
-void ChangePSUParameter() {
+void change_psu_parameter() {
     Serial.println("Select parameter to change (voltage/current): ");
     while (Serial.available() > 0) {
         parameter = Serial.readString();
@@ -453,16 +454,16 @@ void ChangePSUParameter() {
     }
 }
 
-// SFM_measure()
+// sfm_measure()
 // - Reads from Flowmeter
 // - Converts into SFM units
-void SFM_measure() {
+void sfm_measure() {
     if (3 == Wire.requestFrom(sfm3300i2c, 3)) {
         uint8_t crc = 0;
         uint16_t a = Wire.read();
-        crc = CRC_prim(a, crc);
+        crc = crc_prim(a, crc);
         uint8_t b = Wire.read();
-        crc = CRC_prim(b, crc);
+        crc = crc_prim(b, crc);
         uint8_t c = Wire.read();
         // measurement time-stamp
         unsigned long mt = millis();
@@ -500,9 +501,9 @@ void SFM_measure() {
     }
 }
 
-// Checks CRC of received flowmeter data.
-
-uint8_t CRC_prim(uint8_t x, uint8_t crc) {
+// crc_prim()
+// - Checks CRC of received flowmeter data.
+uint8_t crc_prim(uint8_t x, uint8_t crc) {
     crc ^= x;
     for (uint8_t bit = 8; bit > 0; --bit) {
         if (crc & 0x80)
@@ -513,12 +514,15 @@ uint8_t CRC_prim(uint8_t x, uint8_t crc) {
     return crc;
 }
 
+// power_up_error_handler()
+// read_error_handler()
+// display_flow_volume()
 // Humidity Sensor - control functions
-void powerUpErrorHandler(HIH61xx<TwoWire>& hih) {
+void power_up_error_handler(HIH61xx<TwoWire>& hih) {
     Serial.println("Error powering up HIH61xx device");
 }
 
-void readErrorHandler(HIH61xx<TwoWire>& hih) {
+void read_error_handler(HIH61xx<TwoWire>& hih) {
     Serial.println("Error reading from HIH61xx device");
 }
 

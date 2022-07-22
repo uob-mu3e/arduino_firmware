@@ -10,10 +10,13 @@
 // - (via MAX232A interface chip to generate RS232 voltage levels)
 
 #include <Adafruit_MAX31865.h>
+#include <ArduinoSTL.h>
 #include <AsyncDelay.h>
 #include <HIH61xx.h>
 #include <PID_v1.h>
 #include <Wire.h>
+
+#include <string>
 
 // ===[MACRO BEGINS]===
 // ---PSU Channel---
@@ -43,15 +46,15 @@
 
 // ===[GLOBAL BEGINS]===
 // ---PID INITIALISATION---
-double Setpoint = 30, Input = 0, Output = 0;
-double aggKp = 1230, aggKi = 28.6, aggKd = 87.4;
-double consKp = 600, consKi = 50, consKd = 87;
-PID myPID(&Input, &Output, &Setpoint, consKp, consKi, consKd, REVERSE);
+double temp_setpoint = 30, input = 0, output = 0;
+double agg_kp = 1230, agg_ki = 28.6, agg_kd = 87.4;
+double cons_kp = 600, cons_ki = 50, cons_kd = 87;
+PID myPID(&input, &output, &temp_setpoint, cons_kp, cons_ki, cons_kd, REVERSE);
 
 // ---ARDUINO STATUS LED TO PIN CONSTANTS---
-const int redPin = 3;
-const int greenPin = 5;
-const int yellowPin = 6;
+const int red_pin = 3;
+const int green_pin = 5;
+const int yellow_pin = 6;
 
 // ---HARDWARE VARIABLES---
 // -FAN PWM-
@@ -60,7 +63,7 @@ const int yellowPin = 6;
 // speed.
 // - it has a tachometer output which outputs pulses which relate to fan speed.
 // Not yet implemented here. Fan PWM control signal connected to digital pin 9
-int FanPWMPin = 9;
+int fan_pwm_pin = 9;
 
 // -MAX31865 TEMPERATURE SENSOR-
 // is connected via SPI interface. Power from 5v
@@ -77,7 +80,7 @@ Adafruit_MAX31865 thermo = Adafruit_MAX31865(10);
 // -HONEYWELL HUMIDITY SENSOR-
 // Also SPI, same CLK & Data pins as above
 // Chip Select for humidity sensor is connected to pin 7
-const int humidityCS = 7;
+const int humidity_cs = 7;
 
 // -HUMIDITY SENSOR HIH6131-021-
 HIH61xx<TwoWire> hih(Wire);
@@ -96,7 +99,7 @@ int setpoint_input;
 float rel_humidity = 0;
 // initialise fan PWM duty cycle to 50/255. Fan doesn't run when this value is
 // lower than mid-30s
-int PWMValue = 50;
+int pwm_value = 50;
 
 // -FLAGS-
 // show if airflow control loop is stable
@@ -137,12 +140,12 @@ float current_limit = 2;
 float current_setpoint = current_limit + 1;
 // precision with which compare actual current to setpoint
 float curr_precision = 0.01;
-// strings used to send/receive commands to the PSU
-const byte char_length = 8;
-char parameter[char_length];
+// variables and constants used to send/receive commands to the PSU
+const byte char_length = 32;
+char parameter;
 bool new_data = false;
 // String parameter;
-String output;
+String psu_output;
 // Holds value for which channel of the PSU to select
 int channel;
 float amb_temp = 0;
@@ -157,16 +160,16 @@ char pc_command;
 // ===[SETUP BEGINS]===
 void setup() {
     // set up pins
-    pinMode(FanPWMPin, OUTPUT);
+    pinMode(fan_pwm_pin, OUTPUT);
     pinMode(LED_BUILTIN, OUTPUT);
-    pinMode(redPin, OUTPUT);
-    pinMode(greenPin, OUTPUT);
-    pinMode(yellowPin, OUTPUT);
-    pinMode(humidityCS, OUTPUT);
+    pinMode(red_pin, OUTPUT);
+    pinMode(green_pin, OUTPUT);
+    pinMode(yellow_pin, OUTPUT);
+    pinMode(humidity_cs, OUTPUT);
 
     // TEMPORARY - assert this low to disable humidity sensor. NOTE: no code
     // written for it yet.
-    digitalWrite(humidityCS, LOW);
+    digitalWrite(humidity_cs, LOW);
 
     // set up serial ports and I2C, serial=PC, serial1=PSU
     Wire.begin();
@@ -233,9 +236,9 @@ void setup() {
     */
 
     // initialise fan PWM to initial value
-    analogWrite(FanPWMPin, PWMValue);
-    analogWrite(yellowPin, 125);
-    analogWrite(redPin, 125);
+    analogWrite(fan_pwm_pin, pwm_value);
+    analogWrite(yellow_pin, 125);
+    analogWrite(red_pin, 125);
     // delay(3000);
 
     // setup for the MAX31865 temperature sensor
@@ -261,14 +264,12 @@ void loop() {
         ms_display = ms_curr;
         // read from the flowmeter TODO: how does it know to write to `flow`????
         sfm_measure();
-
         temperature = thermo.temperature(RNOMINAL, RREF);
         if (samplingInterval.isExpired() && !hih.isSampling()) {
             hih.start();
             printed = false;
             samplingInterval.repeat();
         }
-
         // instruct the HIH61xx to take a measurement - blocks until the
         // measurement is ready.
         hih.process();
@@ -279,27 +280,24 @@ void loop() {
             rel_humidity = hih.getRelHumidity() / 100.0;
             amb_temp = hih.getAmbientTemp() / 100.0;
         }
-        Input = (double)temperature;
-
+        input = (double)temperature;
         // gap = distance away from setpoint
-        double gap = abs(Setpoint - Input);
+        double gap = abs(temp_setpoint - input);
         if (temperature > amb_temp + 1) {
             // we're close to setpoint, use conservative tuning parameters
             if (gap < 0.1) {
-                myPID.SetTunings(consKp, consKi, consKd);
+                myPID.SetTunings(cons_kp, cons_ki, cons_kd);
                 myPID.Compute();
-                PWMValue = Output;
+                pwm_value = output;
             }
-
             // we're far from setpoint, use aggressive tuning parameters
             else {
-                myPID.SetTunings(aggKp, aggKi, aggKd);
+                myPID.SetTunings(agg_kp, agg_ki, agg_kd);
                 myPID.Compute();
-                PWMValue = Output;
+                pwm_value = output;
             }
         }
-
-        analogWrite(FanPWMPin, PWMValue);
+        analogWrite(fan_pwm_pin, pwm_value);
 
         // record the current flow value in the array
         flow_values[flow_array_index] = flow;
@@ -310,9 +308,9 @@ void loop() {
 
         // calculate moving windowed average
         flow_moving_avg = 0;
-        int i;
-        for (i = 0; i < 10; i++) {
-            flow_moving_avg += flow_values[i];
+        int idx = 0;
+        for (idx = 0; idx < 10; idx++) {
+            flow_moving_avg += flow_values[idx];
         }
         flow_moving_avg /= 10;
 
@@ -321,16 +319,16 @@ void loop() {
         // led and flag as NOT stable.
         //
         // UNSTABLE conditions
-        if (flow_moving_avg > (Setpoint + 1))
-            || (flow_moving_avg < (Setpoint - 1)) {
-                digitalWrite(greenPin, LOW);
-                analogWrite(redPin, 125);
-                airflow_stable = false;
-            }
+        if ((flow_moving_avg > (temp_setpoint + 1)) ||
+            (flow_moving_avg < (temp_setpoint - 1))) {
+            digitalWrite(green_pin, LOW);
+            analogWrite(red_pin, 125);
+            airflow_stable = false;
+        }
         // STABLE conditions
         else {
-            digitalWrite(redPin, LOW);
-            analogWrite(greenPin, 125);
+            digitalWrite(red_pin, LOW);
+            analogWrite(green_pin, 125);
             airflow_stable = true;
         }
 
@@ -347,13 +345,13 @@ void loop() {
             // F() stores the strings in Flash memory, saves using RAM space.
             Serial.println(F("Commands:"));
             Serial.println(F("?: Help"));
-            Serial.println(F("v: produce (V)erbose human readable output"));
+            Serial.println(F("r: produce verbose human (R)eadable output"));
             Serial.println(F("m: produce compact (M)achine readable output"));
             Serial.println(
                 F("s: new (S)etpoint. followed by integer. e.g. s35 for 35 "
                   "l/min"));
             Serial.println(F(
-                "r: (R)un - begin closed loop control - not implememted yet"));
+                "c: Run - begin closed loop (c)ontrol - not implememted yet"));
             Serial.println(
                 F("x: Break - stop closed loop control and turn off fan - not "
                   "implememted yet"));
@@ -375,13 +373,10 @@ void loop() {
         }
 
         if (pc_command == 's') {
-            Serial.print("New setpoint entered:");
-            setpoint_input = (double)Serial.parseFloat();
-            Setpoint = constrain(setpoint_input, 0, 1000);
-            Serial.println(Setpoint);
+            get_setpoint();
         }
 
-        if (pc_command == 'v') {
+        if (pc_command == 'r') {
             human_readable = true;
         }
 
@@ -401,8 +396,8 @@ void loop() {
             transmit_data();
         }
 
-        if (pc_command == 'p') {
-            change_psu_parameter();
+        if ((pc_command == 'v') || (pc_command == 'c')) {
+            get_psu_parameter(pc_command);
         }
 
         pc_command = 0;  // reset current command to null
@@ -412,75 +407,54 @@ void loop() {
 
 // ---------------------------------------
 
-// ===[OTHER FUNCTIONS]===
+// ===[OTHER FUNCTIONS BEGIN]===
+// get_setpoint()
+// - Asks for and set the temperature setpoint
+void get_setpoint() {
+    Serial.print("Enter new setpoint: ");
+    char setpoint_input while (Serial.available() > 0) {
+        setpoint_input = (double)Serial.parseFloat();
+        temp_setpoint = constrain(setpoint_input, 0, 1000);
+        Serial.println("New setpoint: ");
+        Serial.println(temp_setpoint);
+        delay(500);
+    }
+}
 
-// change_psu_parameter()
+// get_psu_parameter()
 // - Called when command "p" is parsed from loop()
 // - Reads the parameter to change (voltage/current)
 // - Asks for value
 // - Sets the value to the corresponding parameter
-void change_psu_parameter() {
-    Serial.println("Select parameter to change (voltage/current): ");
-    static byte idx = 0;
-    char end_marker = "\n";
-    char receiver;
-
-    // Take in multibyte data. Reference:
-    // - https://forum.arduino.cc/t/serial-input-basics-updated/382007
-    while (Serial.available() > 0 && new_data == false) {
-        receiver = Serial.read();
-
-        if (receiver != end_marker) {
-            parameter[idx] = receiver;
-            idx++;
-            if (idx >= char_length) {
-                idx = char_length - 1;
-            }
+void get_psu_parameter(char parameter) {
+    Serial.println(parameter);
+    if (parameter == 'v') {
+        Serial.println("Enter channel voltage: ");
+        while (Serial.available() == 0) {
+            // do nothing to wait for 1 keypress
         }
-
-        else {
-            parameter[idx] = '\0';
-            idx = 0;
-            new_data = true;
-        }
+        volt_setpoint = Serial.parseFloat();
+        set_voltage(volt_setpoint);
+        delay(500);
     }
-
-    if (new_data == true) {
-        // -SET VOLTAGE-
-        if (parameter == "voltage") {
-            Serial.println("Set channel voltage: ");
+    // -SET CURRENT-
+    if (parameter == 'c') {
+        Serial.println("Enter channel current: ");
+        // Current value input not okay: loop until it's under the limit
+        while (true) {
             while (Serial.available() == 0) {
                 // do nothing to wait for 1 keypress
             }
-            volt_setpoint = Serial.parseFloat();
-            set_voltage(volt_setpoint);
-            delay(500);
-        }
-
-        // -SET CURRENT-
-        if (parameter == "current") {
-            Serial.println("Set channel current: ");
-            // Current value input not okay: loop until it's under the limit
-            while (true) {
-                while (Serial.available() == 0) {
-                    // do nothing to wait for 1 keypress
-                }
-                current_setpoint = Serial.parseFloat();
-                if (current_setpoint <= current_limit) {
-                    break;
-                }
-                Serial.print("Current too high. Pick a value below ");
-                Serial.print(current_limit);
-                Serial.println(" amps:");
+            current_setpoint = Serial.parseFloat();
+            if (current_setpoint <= current_limit) {
+                break;
             }
-            set_current(current_setpoint);
-            delay(500);
+            Serial.print("Current too high. Pick a value below ");
+            Serial.print(current_limit);
+            Serial.println(" amps: ");
         }
-
-        else {
-            Serial.println("Choice not recognised.");
-        }
-        new_data = false;
+        set_current(current_setpoint);
+        delay(500);
     }
 }
 
@@ -536,10 +510,11 @@ void sfm_measure() {
 uint8_t crc_prim(uint8_t x, uint8_t crc) {
     crc ^= x;
     for (uint8_t bit = 8; bit > 0; --bit) {
-        if (crc & 0x80)
+        if (crc & 0x80) {
             crc = (crc << 1) ^ POLYNOMIAL;
-        else
+        } else {
             crc = (crc << 1);
+        }
     }
     return crc;
 }
@@ -547,7 +522,7 @@ uint8_t crc_prim(uint8_t x, uint8_t crc) {
 // power_up_error_handler()
 // read_error_handler()
 // display_flow_volume()
-// Humidity Sensor - control functions
+// - Functions to control humidity sensor
 void power_up_error_handler(HIH61xx<TwoWire>& hih) {
     Serial.println("Error powering up HIH61xx device");
 }
@@ -563,81 +538,53 @@ void display_flow_volume(bool force_d = false) {
         Serial.print("\t");
         Serial.print(volume);
         Serial.print("\t");
-        Serial.print(PWMValue);
+        Serial.print(pwm_value);
         Serial.print("\t");
         Serial.print(flow_moving_avg);
         Serial.println(crc_error ? " CRC error" : "");
     }
 }
 
+// transmit_data()
+// - Print out data stream in two formats
+// - 1. Human readable and 2. Non-human readable
 void transmit_data(void) {
-    if (human_readable) {
-        Serial.print("Temp: ");
-        Serial.print(temperature);
-        Serial.print("\t");
-        Serial.print("Flow: ");
-        Serial.print(flow);
-        Serial.print("\t");
-        // Serial.print("Volume: ");
-        // Serial.print(volume);
-        // Serial.print("\t");
-        Serial.print("PWM Value: ");
-        Serial.print(PWMValue);
-        Serial.print("\t");
-        Serial.print("Flow Avg: ");
-        Serial.print(flow_moving_avg);
-        Serial.print("\t");
-        Serial.print("Setpoint: ");
-        Serial.print(Setpoint);
-        Serial.print("\t");
-        Serial.print("Relative humidity: ");
-        Serial.print(rel_humidity);
-        Serial.print("\t");
-        Serial.print("Ambient temperature: ");
-        Serial.print(amb_temp);
-        Serial.print("/t");
-        if (airflow_stable) {
-            Serial.print("Stable");
+    int idx;
+    String stable, setting, title;
+
+    std::vector<String> stream_keys = {
+        "Temp",          "Flow",     "PWM Value",   "Flow Avg",
+        "Temp Setpoint", "Humidity", "Ambient Temp"};
+    std::vector<String> stream_values = {
+        String(temperature),     String(flow),          String(pwm_value),
+        String(flow_moving_avg), String(temp_setpoint), String(rel_humidity),
+        String(amb_temp)};
+
+    for (idx = 0; idx < stream_keys.size(); ++idx) {
+        if (human_readable) {
+            title = stream_keys[idx] + ": ";
+            stable = "Stable";
+            setting = "Setting";
         } else {
-            Serial.print("Setting...");
+            title = stream_keys[idx][0];
+            stable = "K";
+            setting = "N";
         }
+        Serial.print(title);
+        Serial.print(stream_values[idx]);
         Serial.print("\t");
-        Serial.println(crc_error ? " CRC error" : "");
     }
-
-    else {
-        Serial.print("T");
-        Serial.print(temperature);
-        Serial.print("F");
-        Serial.print(flow);
-
-        // Serial.print("V");
-        // Serial.print(volume);
-        // Serial.print("\t");
-        Serial.print("P");
-        Serial.print(PWMValue);
-
-        Serial.print("A");
-        Serial.print(flow_moving_avg);
-
-        Serial.print("S");
-        Serial.print(Setpoint);
-
-        Serial.print("RH");
-        Serial.print(rel_humidity);
-
-        Serial.print("AT");
-        Serial.print(amb_temp);
-
-        if (airflow_stable) {
-            Serial.print("K");
-        } else {
-            Serial.print("N");
-        }
-        Serial.println(crc_error ? " CRC error" : "");
+    if (airflow_stable) {
+        Serial.print(stable);
+    } else {
+        Serial.print(setting);
     }
+    Serial.print("\t");
+    Serial.println(crc_error ? " CRC error" : "");
 }
 
+// set_voltage()
+// - Set the PSU voltage
 void set_voltage(float v) {
     String cmd = "VOLT ";
     String volt = String(v);
@@ -647,8 +594,10 @@ void set_voltage(float v) {
 
     // check whether the output voltage=setpoint
     Serial1.println("VOLT?");
+    // wait for reply from PSU
     while (Serial1.available() == 0) {
-    }  // wait for reply from PSU
+        // do nothing
+    }
     volt_reading = Serial1.parseFloat();
     Serial.print("Output voltage: ");
     Serial.println(volt_reading);
@@ -658,8 +607,12 @@ void set_voltage(float v) {
     } else {
         Serial.println("Voltage ERROR");
     }
+    Serial.println("New voltage: ");
+    Serial.println(volt);
 }
 
+// set_current()
+// - Set PSU current
 void set_current(float a) {
     String cmd = "CURR ";
     String curr = String(a);
@@ -669,8 +622,10 @@ void set_current(float a) {
 
     // check whether the output voltage=setpoint
     Serial1.println("CURR?");
+    // wait for reply from PSU
     while (Serial1.available() == 0) {
-    }  // wait for reply from PSU
+        // do nothing
+    }
     current_reading = Serial1.parseFloat();
     Serial.print("Output current: ");
     Serial.println(current_reading);
@@ -682,12 +637,14 @@ void set_current(float a) {
     }
 }
 
+// output_switch()
+// TODO what does this do?
 void output_switch() {
     Serial.println("Output (on/off): ");
     while (Serial.available() == 0) {
     }
-    output = Serial.readString();
-    if (output == "on") {
+    psu_output = Serial.readString();
+    if (psu_output == "on") {
         Serial1.println("OUTPT 1");
         delay(100);
         Serial1.println("OUTP?");
@@ -698,7 +655,7 @@ void output_switch() {
             Serial.println("Output set up correctly.");
         }
     }
-    if (output == "off") {
+    if (psu_output == "off") {
         Serial1.println("OUTPT 0");
         Serial1.println("OUTP?");
         while (Serial1.available() == 0) {
@@ -710,6 +667,8 @@ void output_switch() {
     }
 }
 
+// channel_select()
+// - Send command to set the PSU channel
 void channel_select(int n) {
     String cmd = "INST OUT";
     String n_str = String(n);
@@ -718,7 +677,10 @@ void channel_select(int n) {
     delay(500);
 }
 
+// channel_initialization()
+// - Run at start to initialize all PSU channels
 void channel_initialization() {
+    int idx;
     Serial1.println("*IDN?");
     while (Serial1.available() == 0) {
     }
@@ -726,8 +688,8 @@ void channel_initialization() {
     Serial.print("PSU identification: ");
     Serial.print(identity);
     // turning the voltage on all channels to 0
-    for (int i = 1; i < 5; i++) {
-        channel_select(i);
+    for (int idx = 1; idx < 5; idx++) {
+        channel_select(idx);
         Serial1.println("VOLT 0");
         Serial1.println("OUTP 0");
         delay(100);
@@ -742,3 +704,4 @@ void channel_initialization() {
         }
     }
 }
+// ===[OTHER FUNCTIONS END]===

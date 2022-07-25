@@ -141,10 +141,7 @@ float current_setpoint = current_limit + 1;
 // precision with which compare actual current to setpoint
 float curr_precision = 0.01;
 // variables and constants used to send/receive commands to the PSU
-const byte char_length = 32;
 char parameter;
-bool new_data = false;
-// String parameter;
 String psu_output;
 // Holds value for which channel of the PSU to select
 int channel;

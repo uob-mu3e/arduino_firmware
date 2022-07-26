@@ -11,6 +11,7 @@
 //     - I2C interface
 //     - some example code taken from
 // https://github.com/MyElectrons/sfm3300-arduino
+// Line ending: "No line ending"
 
 #include <Adafruit_MAX31865.h>
 #include <ArduinoSTL.h>
@@ -292,23 +293,23 @@ void print_help() {
     Serial.println(F("?: Help"));
     Serial.println(F("r: Toggle verbose human (R)eadable output"));
     Serial.println(F("s: Change temperature (S)etpoint."));
-    Serial.println(
-        F("l: Run - begin closed (l)oop control - not implememted "
-          "yet"));
-    Serial.println(
-        F("x: Break - stop closed loop control and turn off fan - "
-          "not "
-          "implememted yet"));
     Serial.println(F("d: (D)isplay all measurements"));
-    Serial.println(F("f: display (F}low measurement"));
+    Serial.println(F("f: display (F)low measurement"));
+    Serial.println(F("b: Toggle (B)roadcast measurements"));
+    Serial.println(F("v: Change PSU (v)oltage"));
+    Serial.println(F("c: Change PSU (c)urrent"));
     Serial.println(
         F("t: display (T)emperature measurement - not implememted "
           "yet"));
     Serial.println(
         F("h: display (H)umidity measurement - not implememted yet"));
-    Serial.println(F("b: Toggle (B)roadcast measurements"));
-    Serial.println(F("v: Change PSU (v)oltage"));
-    Serial.println(F("c: Change PSU (c)urrent"));
+    Serial.println(
+        F("x: Break - stop closed loop control and turn off fan - "
+          "not "
+          "implememted yet"));
+    Serial.println(
+        F("l: Run - begin closed (l)oop control - not implememted "
+          "yet"));
 }
 
 // control_arduino_leds()
@@ -335,14 +336,12 @@ void control_arduino_leds(float flow_val) {
 // - Asks for and set the temperature setpoint
 void get_setpoint() {
     int setpoint_input;
-    Serial.print("Enter new setpoint: ");
-    while (Serial.available() > 0) {
-        setpoint_input = (double)Serial.parseFloat();
-        temp_setpoint = constrain(setpoint_input, 0, 1000);
-        Serial.println("New setpoint: ");
-        Serial.println(temp_setpoint);
-        delay(500);
-    }
+    Serial.print("Enter new setpoint: \n");
+    setpoint_input = (double)Serial.parseFloat();
+    temp_setpoint = constrain(setpoint_input, 0, 1000);
+    Serial.println("New setpoint: " + String(temp_setpoint));
+    delay(500);
+    
 }
 
 int calculate_flow_avg(float values[10]) {
@@ -363,7 +362,6 @@ void get_psu_parameter(char parameter) {
     // ### VOLTAGE ###
     if (parameter == 'v') {
         Serial.println("Enter channel voltage: ");
-        while (Serial.available() == 0) {}
         float volt_setpoint = Serial.parseFloat();
         set_voltage(volt_setpoint);
         delay(500);
@@ -374,7 +372,6 @@ void get_psu_parameter(char parameter) {
     if (parameter == 'c') {
         Serial.println("Enter channel current: ");
         while (true) {
-            while (Serial.available() == 0) {}
             current_setpoint = Serial.parseFloat();
             if (current_setpoint <= current_limit) break;
             Serial.print("Current too high. Pick a value below ");
@@ -447,7 +444,6 @@ void set_voltage(float v_target) {
     Serial1.println(tot);
     delay(1000);
     Serial1.println("VOLT?");
-    while (Serial1.available() == 0) {}
     float volt_reading = Serial1.parseFloat();
     Serial.print("Output voltage: ");
     Serial.println(volt_reading);
@@ -471,7 +467,6 @@ void set_current(float c_target) {
     Serial1.println(tot);
     delay(1000);
     Serial1.println("CURR?");
-    while (Serial1.available() == 0) {}
     float current_reading = Serial1.parseFloat();
     Serial.print("Output current: ");
     Serial.println(current_reading);
@@ -648,8 +643,6 @@ void setup() {
 
 // ===[MAIN LOOP BEGINS]===
 void loop() {
-
-
     loop_pid();
     loop_command_input();
 }

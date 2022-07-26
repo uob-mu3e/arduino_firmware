@@ -91,12 +91,21 @@ const float current_limit = 2;
 // initialise these---best left in global scope
 // since accesses to them are a bit complicated
 float flow_history[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-int flow_array_idx = 0 float rel_humidity = 0;
+int flow_array_idx = 0;
+float rel_humidity = 0;
 int pwm_value = 50;
 float amb_temp = 0;
 float temperature = 0;
 float flow = 0;
 float flow_moving_avg = 0;
+float volume;
+
+// ### FLAGS ###
+bool airflow_stable = false;
+bool broadcast_flag = true;
+bool human_readable = false;
+bool crc_error;
+
 
 // ### OTHER ###
 // measurement interval in ms; how frequently to measure inputs
@@ -112,117 +121,82 @@ PID myPID(&input, &output, &temp_setpoint, cons_kp, cons_ki, cons_kd, REVERSE);
 
 // #######################################
 
-// ===[SETUP BEGINS]===
-void setup() {
-    // set up pins
-    pinMode(fan_pwm_pin, OUTPUT);
-    pinMode(LED_BUILTIN, OUTPUT);
-    pinMode(red_pin, OUTPUT);
-    pinMode(green_pin, OUTPUT);
-    pinMode(yellow_pin, OUTPUT);
-    pinMode(humidity_cs, OUTPUT);
-
-    // TEMPORARY - assert this low to disable humidity sensor. NOTE: no code
-    // written for it yet.
-    digitalWrite(humidity_cs, LOW);
-
-    // set up serial ports and I2C, serial=PC, serial1=PSU
-    Wire.begin();
-    Serial.begin(9600);
-    Serial1.begin(9600);
-    delay(500);
-
-    // initializing all power supply channels at 0
-    initialize_channels();
-
-    // user input select PSU channel
-    Serial.println("Select PSU channel: ");
-    while (Serial.available() == 0) {}
-
-    // holds value for which channel of the PSU to select
-    int channel = Serial.parseInt();
-    select_channel(channel);
-    Serial.print("Channel ");
-    Serial.print(channel);
-    Serial.println(" selected.");
-
-    // soft reset
-    Wire.beginTransmission(sfm3300i2c);
-    Wire.write(0x20);
-    Wire.write(0x00);
-    Wire.endTransmission();
-    delay(1000);
-
-#if 1
-    Wire.beginTransmission(sfm3300i2c);
-    Wire.write(0x31);  // read serial number
-    Wire.write(0xAE);  // command 0x31AE
-    Wire.endTransmission();
-    if (6 == Wire.requestFrom(sfm3300i2c, 6)) {
-        uint32_t sn = 0;
-        sn = Wire.read();
-        sn <<= 8;
-        sn += Wire.read();
-        sn <<= 8;
-        Wire.read();  // CRC - omitting for now
-        sn += Wire.read();
-        sn <<= 8;
-        sn += Wire.read();
-        Wire.read();  // CRC - omitting for now
-        Serial.println(sn);
-    } else {
-        Serial.println("serial number - i2c read error");
-    }
-#endif
-
-    // start continuous measurement
-    Wire.beginTransmission(sfm3300i2c);
-    Wire.write(0x10);
-    Wire.write(0x00);
-    Wire.endTransmission();
-    delay(1000);
-
-    // discard the first chunk of data that is always 0xFF
-    /*
-    Wire.requestFrom(sfm3300i2c,3);
-    Wire.read();
-    Wire.read();
-    Wire.read();
-    */
-
-    // initialise fan PWM duty cycle to 50/255. Fan doesn't run when this value
-    // is lower than mid-30s initialise other pins
-    analogWrite(fan_pwm_pin, int pwm_value = 50);
-    analogWrite(yellow_pin, 125);
-    analogWrite(red_pin, 125);
-
-    // setup for the MAX31865 temperature sensor
-    // set to 2, 3 or 4WIRE as necessary
-    thermo.begin(MAX31865_2WIRE);  
-
-    // turn the PID & set limits as compression heating after 145 pwm
-    myPID.SetMode(AUTOMATIC);
-    myPID.SetOutputLimits(30, 135);
-}
-// ===[SETUP ENDS]===
-
-// #######################################
-
-// ===[MAIN LOOP BEGINS]===
-void loop() {
-    // flag declarations
-    bool airflow_stable = false;
-    bool broadcast_flag = true;
-    bool human_readable = false;
-
-    loop_pid();
-    loop_command_input();
-}
-// ===[MAIN LOOP ENDS]===
-
-// #######################################
-
 // ===[OTHER FUNCTIONS BEGIN]===
+// measure_flow_convert_sfm()
+// - Reads from Flowmeter
+// - Converts into SFM units
+void measure_flow_convert_sfm() {
+    
+    bool flow_sign, flow_sign_previous;
+
+    if (3 == Wire.requestFrom(sfm3300i2c, 3)) {
+        uint8_t crc = 0;
+        uint16_t a = Wire.read();
+        crc = crc_prim(a, crc);
+        uint8_t b = Wire.read();
+        crc = crc_prim(b, crc);
+        uint8_t c = Wire.read();
+        // measurement time-stamp
+        unsigned long mt = millis();
+        // report CRC error
+        if (crc_error = (crc != c)) return;
+        a = (a << 8) | b;
+        float new_flow = ((float)a - 32768) / 120;
+        flow = new_flow;
+
+        // an additional functionality for convenience of experimenting with the
+        // sensor
+        flow_sign = 0 < new_flow;
+
+        // once the flow changed direction reset the volume
+        if (flow_sign_previous != flow_sign) {
+            flow_sign_previous = flow_sign;
+            // display_flow_volume();
+            volume = 0;
+        }
+
+        // time interval of the current measurement
+        unsigned long mt_prev = millis();
+        unsigned long mt_delta = mt - mt_prev;
+        mt_prev = mt;
+
+        // flow measured in slm; volume calculated in (s)cc
+        // /60 --> convert to liters per second
+        // *1000 --> convert liters to cubic centimeters
+        // /1000 --> we count time in milliseconds
+        // *mt_delta --> current measurement time delta in milliseconds
+        volume += flow / 60 * mt_delta;
+    } else {
+        // TODO:??
+        // report i2c read error
+    }
+}
+// power_up_error_handler()
+// read_error_handler()
+// display_flow_volume()
+// - Functions to control humidity sensor
+// - For convenience display only significant volumes (>5ml)
+void power_up_error_handler(HIH61xx<TwoWire>& hih) {
+    Serial.println("Error powering up HIH61xx device");
+}
+
+void read_error_handler(HIH61xx<TwoWire>& hih) {
+    Serial.println("Error reading from HIH61xx device");
+}
+
+void display_flow_volume(bool force_d = false) {
+    if (5 < abs(volume) || force_d) {  
+        Serial.print(flow);
+        Serial.print("\t");
+        Serial.print(volume);
+        Serial.print("\t");
+        Serial.print(pwm_value);
+        Serial.print("\t");
+        Serial.print(flow_moving_avg);
+        Serial.println(crc_error ? " CRC error" : "");
+    }
+}
+
 // loop_pid()
 // - PID control loop logic
 // - Outputs variables every loop
@@ -231,7 +205,7 @@ void loop_pid() {
     // ms_prev: timer for measurements "soft interrupts"
     // ms_display: timer for display "soft interrupts"
     // ms_curr: current
-    unsigned long mt_prev = millis();
+    
     unsigned long ms_prev = millis();
     unsigned long ms_display = millis();
     unsigned long ms_curr = millis();
@@ -278,10 +252,6 @@ void loop_pid() {
         }
         analogWrite(fan_pwm_pin, pwm_value);
 
-        // record the current flow value in the array
-        // TODO: I think this doesn't really "overflow"
-        // the array, it starts again from 0 while value at indexes 1-9 are
-        // still historical values
         flow_history[flow_array_idx] = flow;
         flow_array_idx++;
         flow_array_idx %= 10;
@@ -312,7 +282,7 @@ void loop_command_input() {
 
 // toggle_flag()
 // - Negates the parameter
-bool toggle_flag(bool flag) { return !flag }
+bool toggle_flag(bool flag) { return !flag; }
 
 // print_help()
 // - Displays list of commands
@@ -346,7 +316,7 @@ void print_help() {
 // - If average of last 10 flow readings is setpoint +/- 1 then turn the
 //   LED on to show stable airflow and flag as stable, otherwise light red
 //   LED and flag as NOT stable.
-void control_arduino_leds(flow_val) {
+void control_arduino_leds(float flow_val) {
     // ### UNSTABLE conditions ###
     if ((flow_val > (temp_setpoint + 1)) || (flow_val < (temp_setpoint - 1))) {
         digitalWrite(green_pin, LOW);
@@ -428,32 +398,6 @@ uint8_t crc_prim(uint8_t x, uint8_t crc) {
         }
     }
     return crc;
-}
-
-// power_up_error_handler()
-// read_error_handler()
-// display_flow_volume()
-// - Functions to control humidity sensor
-// - For convenience display only significant volumes (>5ml)
-void power_up_error_handler(HIH61xx<TwoWire>& hih) {
-    Serial.println("Error powering up HIH61xx device");
-}
-
-void read_error_handler(HIH61xx<TwoWire>& hih) {
-    Serial.println("Error reading from HIH61xx device");
-}
-
-void display_flow_volume(bool force_d = false) {
-    if (5 < abs(volume) || force_d) {  
-        Serial.print(flow);
-        Serial.print("\t");
-        Serial.print(volume);
-        Serial.print("\t");
-        Serial.print(pwm_value);
-        Serial.print("\t");
-        Serial.print(flow_moving_avg);
-        Serial.println(crc_error ? " CRC error" : "");
-    }
 }
 
 // transmit_data()
@@ -544,7 +488,7 @@ void set_current(float c_target) {
 void output_switch() {
     Serial.println("Output (on/off): ");
     while (Serial.available() == 0) {}
-    Sring psu_output = Serial.readString();
+    String psu_output = Serial.readString();
     if (psu_output == "on") {
         Serial1.println("OUTPT 1");
         delay(100);
@@ -601,52 +545,112 @@ void initialize_channels() {
     }
 }
 
-// measure_flow_convert_sfm()
-// - Reads from Flowmeter
-// - Converts into SFM units
-void measure_flow_convert_sfm() {
-    float volume;
-    bool flow_sign, flow_sign_previous, crc_error;
-
-    if (3 == Wire.requestFrom(sfm3300i2c, 3)) {
-        uint8_t crc = 0;
-        uint16_t a = Wire.read();
-        crc = crc_prim(a, crc);
-        uint8_t b = Wire.read();
-        crc = crc_prim(b, crc);
-        uint8_t c = Wire.read();
-        // measurement time-stamp
-        unsigned long mt = millis();
-        // report CRC error
-        if (crc_error = (crc != c)) return;
-        a = (a << 8) | b;
-        float new_flow = ((float)a - 32768) / 120;
-        flow = new_flow;
-
-        // an additional functionality for convenience of experimenting with the
-        // sensor
-        flow_sign = 0 < new_flow;
-
-        // once the flow changed direction reset the volume
-        if (flow_sign_previous != flow_sign) {
-            flow_sign_previous = flow_sign;
-            // display_flow_volume();
-            volume = 0;
-        }
-
-        // time interval of the current measurement
-        unsigned long mt_delta = mt - mt_prev;
-        mt_prev = mt;
-
-        // flow measured in slm; volume calculated in (s)cc
-        // /60 --> convert to liters per second
-        // *1000 --> convert liters to cubic centimeters
-        // /1000 --> we count time in milliseconds
-        // *mt_delta --> current measurement time delta in milliseconds
-        volume += flow / 60 * mt_delta;
-    } else {
-        // TODO:??
-        // report i2c read error
-    }
-}
 // ===[OTHER FUNCTIONS END]===
+
+// #######################################
+
+// ===[SETUP BEGINS]===
+void setup() {
+    // set up pins
+    pinMode(fan_pwm_pin, OUTPUT);
+    pinMode(LED_BUILTIN, OUTPUT);
+    pinMode(red_pin, OUTPUT);
+    pinMode(green_pin, OUTPUT);
+    pinMode(yellow_pin, OUTPUT);
+    pinMode(humidity_cs, OUTPUT);
+
+    // TEMPORARY - assert this low to disable humidity sensor. NOTE: no code
+    // written for it yet.
+    digitalWrite(humidity_cs, LOW);
+
+    // set up serial ports and I2C, serial=PC, serial1=PSU
+    Wire.begin();
+    Serial.begin(9600);
+    Serial1.begin(9600);
+    delay(500);
+
+    // initializing all power supply channels at 0
+    initialize_channels();
+
+    // user input select PSU channel
+    Serial.println("Select PSU channel: ");
+    while (Serial.available() == 0) {}
+
+    // holds value for which channel of the PSU to select
+    int channel = Serial.parseInt();
+    select_channel(channel);
+    Serial.print("Channel ");
+    Serial.print(channel);
+    Serial.println(" selected.");
+
+    // soft reset
+    Wire.beginTransmission(sfm3300i2c);
+    Wire.write(0x20);
+    Wire.write(0x00);
+    Wire.endTransmission();
+    delay(1000);
+
+#if 1
+    Wire.beginTransmission(sfm3300i2c);
+    Wire.write(0x31);  // read serial number
+    Wire.write(0xAE);  // command 0x31AE
+    Wire.endTransmission();
+    if (6 == Wire.requestFrom(sfm3300i2c, 6)) {
+        uint32_t sn = 0;
+        sn = Wire.read();
+        sn <<= 8;
+        sn += Wire.read();
+        sn <<= 8;
+        Wire.read();  // CRC - omitting for now
+        sn += Wire.read();
+        sn <<= 8;
+        sn += Wire.read();
+        Wire.read();  // CRC - omitting for now
+        Serial.println(sn);
+    } else {
+        Serial.println("serial number - i2c read error");
+    }
+#endif
+
+    // start continuous measurement
+    Wire.beginTransmission(sfm3300i2c);
+    Wire.write(0x10);
+    Wire.write(0x00);
+    Wire.endTransmission();
+    delay(1000);
+
+    // discard the first chunk of data that is always 0xFF
+    /*
+    Wire.requestFrom(sfm3300i2c,3);
+    Wire.read();
+    Wire.read();
+    Wire.read();
+    */
+
+    // initialise fan PWM duty cycle to 50/255. Fan doesn't run when this value
+    // is lower than mid-30s initialise other pins
+    int pwm_value;
+    analogWrite(fan_pwm_pin, pwm_value = 50);
+    analogWrite(yellow_pin, 125);
+    analogWrite(red_pin, 125);
+
+    // setup for the MAX31865 temperature sensor
+    // set to 2, 3 or 4WIRE as necessary
+    thermo.begin(MAX31865_2WIRE);  
+
+    // turn the PID & set limits as compression heating after 145 pwm
+    myPID.SetMode(AUTOMATIC);
+    myPID.SetOutputLimits(30, 135);
+}
+// ===[SETUP ENDS]===
+
+// #######################################
+
+// ===[MAIN LOOP BEGINS]===
+void loop() {
+
+
+    loop_pid();
+    loop_command_input();
+}
+// ===[MAIN LOOP ENDS]===

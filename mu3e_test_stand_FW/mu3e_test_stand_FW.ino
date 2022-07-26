@@ -107,16 +107,17 @@ bool broadcast_flag = true;
 bool human_readable = false;
 bool crc_error;
 
-
-// ### OTHER ###
-// measurement interval in ms; how frequently to measure inputs
-const unsigned mms = 1000;
-
 // ### PID INITIALISATION ###
+// ms_prev: timer for measurements "soft interrupts"
+// ms_display: timer for display "soft interrupts"
+// mms: measurement interval in ms; how frequently to measure inputs
+const unsigned mms = 1000;
 double temp_setpoint = 30, input = 0, output = 0;
 double agg_kp = 1230, agg_ki = 28.6, agg_kd = 87.4;
 double cons_kp = 600, cons_ki = 50, cons_kd = 87;
 PID myPID(&input, &output, &temp_setpoint, cons_kp, cons_ki, cons_kd, REVERSE);
+unsigned long ms_prev = millis();
+unsigned long ms_display = millis();
 
 // ===[GLOBAL ENDS]===
 
@@ -127,9 +128,7 @@ PID myPID(&input, &output, &temp_setpoint, cons_kp, cons_ki, cons_kd, REVERSE);
 // - Reads from Flowmeter
 // - Converts into SFM units
 void measure_flow_convert_sfm() {
-    
     bool flow_sign, flow_sign_previous;
-
     if (3 == Wire.requestFrom(sfm3300i2c, 3)) {
         uint8_t crc = 0;
         uint16_t a = Wire.read();
@@ -137,8 +136,10 @@ void measure_flow_convert_sfm() {
         uint8_t b = Wire.read();
         crc = crc_prim(b, crc);
         uint8_t c = Wire.read();
+
         // measurement time-stamp
         unsigned long mt = millis();
+
         // report CRC error
         if (crc_error = (crc != c)) return;
         a = (a << 8) | b;
@@ -157,6 +158,8 @@ void measure_flow_convert_sfm() {
         }
 
         // time interval of the current measurement
+        // mt_prev: last measurement time-stamp
+        // mt_delta: difference between mt and mt_prev
         unsigned long mt_prev = millis();
         unsigned long mt_delta = mt - mt_prev;
         mt_prev = mt;
@@ -202,13 +205,8 @@ void display_flow_volume(bool force_d = false) {
 // - PID control loop logic
 // - Outputs variables every loop
 void loop_pid() {
-    // mt_prev: last measurement time-stamp
-    // ms_prev: timer for measurements "soft interrupts"
-    // ms_display: timer for display "soft interrupts"
-    // ms_curr: current
-    
-    unsigned long ms_prev = millis();
-    unsigned long ms_display = millis();
+    // ms_curr: current time
+
     unsigned long ms_curr = millis();
 
     // not sure about the role of this

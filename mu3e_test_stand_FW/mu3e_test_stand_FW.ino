@@ -86,7 +86,7 @@ AsyncDelay samplingInterval;
 // current_limit: upper limit on the current
 const float volt_precision = 0.01;
 const float curr_precision = 0.01;
-const float current_limit = 2;
+const float current_limit = 3;
 
 // ### VARIABLES ###
 // initialise these---best left in global scope
@@ -204,11 +204,7 @@ void display_flow_volume(bool force_d = false) {
 // loop_pid()
 // - PID control loop logic
 // - Outputs variables every loop
-void loop_pid() {
-    // ms_curr: current time
-
-    unsigned long ms_curr = millis();
-
+void loop_pid(unsigned long ms_curr) {
     // not sure about the role of this
     bool printed = true;
 
@@ -230,8 +226,8 @@ void loop_pid() {
         if (hih.isFinished() && !printed) {
             // print saved values
             printed = true;
-            float rel_humidity = hih.getRelHumidity() / 100.0;
-            float amb_temp = hih.getAmbientTemp() / 100.0;
+            rel_humidity = hih.getRelHumidity() / 100.0;
+            amb_temp = hih.getAmbientTemp() / 100.0;
         }
         input = (double)temperature;
         double gap = abs(temp_setpoint - input);
@@ -262,6 +258,11 @@ void loop_pid() {
 
 // loop_command_input()
 // - Reads and performs commands while serial port is available
+// - After every command, reset current command to 0
+// - The weird effect of this is that there is always character '0' in the buffer
+//   so we must set line ending to "No line ending", or else the input of some variables
+//   will be intercepted as 0.0 (for Serial.parseFloat())
+// - Currently, it is set to '\0'
 void loop_command_input() {
     char pc_command;
     while (Serial.available() > 0) {
@@ -272,10 +273,12 @@ void loop_command_input() {
         if (pc_command == 'r') human_readable = toggle_flag(human_readable);
         if (pc_command == 'b') broadcast_flag = toggle_flag(broadcast_flag);
         if (pc_command == 'd') transmit_data();
+        if (pc_command == 'p') get_channel();
+        if (pc_command == 'o') switch_on_selected_channel(); // TODO: TOGGLE THIS!!
         if ((pc_command == 'v') || (pc_command == 'c')) {
             get_psu_parameter(pc_command);
         }
-        pc_command = 0;  // reset current command to null
+        pc_command = '\0';  
     }
 }
 
@@ -294,8 +297,10 @@ void print_help() {
     Serial.println(F("d: (D)isplay all measurements"));
     Serial.println(F("f: display (F)low measurement"));
     Serial.println(F("b: Toggle (B)roadcast measurements"));
-    Serial.println(F("v: Change PSU (v)oltage"));
-    Serial.println(F("c: Change PSU (c)urrent"));
+    Serial.println(F("v{value}: Change PSU (v)oltage"));
+    Serial.println(F("c{value}: Change PSU (c)urrent"));
+    Serial.println(F("p{value}: Select a (P)SU channel"));
+    Serial.println(F("o: Toggle selected PSU channel on/off"));
     Serial.println(
         F("t: display (T)emperature measurement - not implememted "
           "yet"));
@@ -399,11 +404,11 @@ uint8_t crc_prim(uint8_t x, uint8_t crc) {
 // - Print out data stream in two formats
 // - 1. Human readable and 2. Non-human readable
 void transmit_data(void) {
-    String stable, setting, title;
+    String stable, setting, title, delimiter;
 
     std::vector<String> stream_keys = {
         "Temp",          "Flow",     "PWM Value",   "Flow Avg",
-        "Temp Setpoint", "Humidity", "Ambient Temp"};
+        "Humidity", "Ambient Temp"};
     std::vector<String> stream_values = {
         String(temperature),     String(flow),          String(pwm_value),
         String(flow_moving_avg), String(temp_setpoint), String(rel_humidity),
@@ -414,21 +419,22 @@ void transmit_data(void) {
             title = stream_keys[idx] + ": ";
             stable = "Stable";
             setting = "Setting";
+            delimiter = "\t";
         } else {
             title = stream_keys[idx][0];
             stable = "K";
             setting = "N";
+            delimiter = "";
         }
         Serial.print(title);
         Serial.print(stream_values[idx]);
-        Serial.print("\t");
+        Serial.print(delimiter);
     }
     if (airflow_stable) {
         Serial.print(stable);
     } else {
         Serial.print(setting);
     }
-    Serial.print("\t");
     Serial.println(crc_error ? " CRC error" : "");
 }
 
@@ -503,13 +509,32 @@ void output_switch() {
     }
 }
 
+// get_channel()
+// - asks for a PSU channel and selects it
+void get_channel() {
+    Serial.println("Select PSU channel: ");
+    int channel = Serial.parseInt(); 
+    select_channel(channel);
+    String printout = "Channel " + String(channel) + " selected.";
+    Serial.print(printout);
+}
+
+// switch_on_selected_channel()
+// - Switch on selected channel
+void switch_on_selected_channel() {
+    String cmd = "OUTP:SEL 1";
+    Serial1.println(cmd);
+    cmd = "OUTP:STAT 1";
+    Serial1.println(cmd);
+    Serial.print("Selected channel switched on.");
+    delay(500);
+}
+
 // select_channel()
 // - Send command to set the PSU channel
-void select_channel(int channel_number) {
-    String cmd = "INST OUT";
-    String channel_name = String(channel_number);
-    String channel_tot = cmd + channel_name;
-    Serial1.println(channel_tot);
+void select_channel(int channel) {
+    String cmd = "INST OUT" + String(channel);
+    Serial1.println(cmd);
     delay(500);
 }
 
@@ -534,17 +559,21 @@ void initialize_channels() {
         if (output_init != 0) {
             Serial.println("Output error");
             break;
-        }
-    }
+        }    }
 }
+
 
 // ===[OTHER FUNCTIONS END]===
 
 // #######################################
 
 // ===[SETUP BEGINS]===
+// - set up pins
+// - disable humidity sensor by setting to LOW: Note: not implemented
+// - set up serial port baud rate, serial = PC, serial1 = PSU
+// - initialise all power supply channels at 0V
+// - select channel 1 by default
 void setup() {
-    // set up pins
     pinMode(fan_pwm_pin, OUTPUT);
     pinMode(LED_BUILTIN, OUTPUT);
     pinMode(red_pin, OUTPUT);
@@ -552,29 +581,21 @@ void setup() {
     pinMode(yellow_pin, OUTPUT);
     pinMode(humidity_cs, OUTPUT);
 
-    // TEMPORARY - assert this low to disable humidity sensor. NOTE: no code
-    // written for it yet.
     digitalWrite(humidity_cs, LOW);
 
-    // set up serial ports and I2C, serial=PC, serial1=PSU
     Wire.begin();
     Serial.begin(9600);
     Serial1.begin(9600);
     delay(500);
 
-    // initializing all power supply channels at 0
     initialize_channels();
 
     // user input select PSU channel
-    Serial.println("Select PSU channel: ");
-    while (Serial.available() == 0) {}
+    // Serial.println("Select PSU channel: ");
 
     // holds value for which channel of the PSU to select
-    int channel = Serial.parseInt();
+    int channel = 1;
     select_channel(channel);
-    Serial.print("Channel ");
-    Serial.print(channel);
-    Serial.println(" selected.");
 
     // soft reset
     Wire.beginTransmission(sfm3300i2c);
@@ -641,7 +662,9 @@ void setup() {
 
 // ===[MAIN LOOP BEGINS]===
 void loop() {
-    loop_pid();
+    // ms_curr: current time
+    unsigned long ms_curr = millis();
+    loop_pid(ms_curr);
     loop_command_input();
 }
 // ===[MAIN LOOP ENDS]===

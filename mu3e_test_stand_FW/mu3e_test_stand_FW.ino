@@ -174,6 +174,7 @@ void measure_flow_convert_sfm() {
         // TODO:??
         // report i2c read error
     }
+    return;
 }
 // power_up_error_handler()
 // read_error_handler()
@@ -182,10 +183,12 @@ void measure_flow_convert_sfm() {
 // - For convenience display only significant volumes (>5ml)
 void power_up_error_handler(HIH61xx<TwoWire>& hih) {
     Serial.println("Error powering up HIH61xx device");
+    return;
 }
 
 void read_error_handler(HIH61xx<TwoWire>& hih) {
     Serial.println("Error reading from HIH61xx device");
+    return;
 }
 
 void display_flow_volume(bool force_d = false) {
@@ -199,6 +202,7 @@ void display_flow_volume(bool force_d = false) {
         Serial.print(flow_moving_avg);
         Serial.println(crc_error ? " CRC error" : "");
     }
+    return;
 }
 
 // loop_pid()
@@ -254,6 +258,7 @@ void loop_pid(unsigned long ms_curr) {
         flow_moving_avg = calculate_flow_avg(flow_history);
         if (broadcast_flag) transmit_data();
     }
+    return;
 }
 
 // loop_command_input()
@@ -274,12 +279,13 @@ void loop_command_input() {
         if (pc_command == 'b') broadcast_flag = toggle_flag(broadcast_flag);
         if (pc_command == 'd') transmit_data();
         if (pc_command == 'p') get_channel();
-        if (pc_command == 'o') switch_on_selected_channel(); // TODO: TOGGLE THIS!!
+        if (pc_command == 'o') toggle_selected_channel();
         if ((pc_command == 'v') || (pc_command == 'c')) {
             get_psu_parameter(pc_command);
         }
         pc_command = '\0';  
     }
+    return;
 }
 
 // toggle_flag()
@@ -300,7 +306,7 @@ void print_help() {
     Serial.println(F("v{value}: Change PSU (v)oltage"));
     Serial.println(F("c{value}: Change PSU (c)urrent"));
     Serial.println(F("p{value}: Select a (P)SU channel"));
-    Serial.println(F("o: Toggle selected PSU channel on/off"));
+    Serial.println(F("o: Toggle selected PSU channel (O)n/(O)ff"));
     Serial.println(
         F("t: display (T)emperature measurement - not implememted "
           "yet"));
@@ -313,6 +319,7 @@ void print_help() {
     Serial.println(
         F("l: Run - begin closed (l)oop control - not implememted "
           "yet"));
+    return;
 }
 
 // control_arduino_leds()
@@ -333,6 +340,7 @@ void control_arduino_leds(float flow_val) {
         analogWrite(green_pin, 125);
         airflow_stable = true;
     }
+    return;
 }
 
 // get_setpoint()
@@ -344,7 +352,7 @@ void get_setpoint() {
     temp_setpoint = constrain(setpoint_input, 0, 1000);
     Serial.println("New setpoint: " + String(temp_setpoint));
     delay(500);
-    
+    return;    
 }
 
 int calculate_flow_avg(float values[10]) {
@@ -384,6 +392,7 @@ void get_psu_parameter(char parameter) {
         set_current(current_setpoint);
         delay(500);
     }
+    return;
 }
 
 // crc_prim()
@@ -436,16 +445,15 @@ void transmit_data(void) {
         Serial.print(setting);
     }
     Serial.println(crc_error ? " CRC error" : "");
+    return;
 }
 
 // set_voltage()
 // - Sets the PSU voltage
 // - Checks whether the output voltage=setpoint
 void set_voltage(float v_target) {
-    String cmd = "VOLT ";
-    String volt = String(v_target);
-    String tot = cmd + volt;
-    Serial1.println(tot);
+    String cmd = "VOLT " + String(v_target);
+    Serial1.println(cmd);
     delay(1000);
     Serial1.println("VOLT?");
     float volt_reading = Serial1.parseFloat();
@@ -459,6 +467,7 @@ void set_voltage(float v_target) {
     }
     Serial.println("New voltage: ");
     Serial.println(volt);
+    return;
 }
 
 // set_current()
@@ -480,10 +489,11 @@ void set_current(float c_target) {
     } else {
         Serial.println("Current ERROR");
     }
+    return;
 }
 
 // output_switch()
-// TODO what does this do?
+// TODO: this not being used for anything
 void output_switch() {
     Serial.println("Output (on/off): ");
     while (Serial.available() == 0) {}
@@ -492,7 +502,6 @@ void output_switch() {
         Serial1.println("OUTPT 1");
         delay(100);
         Serial1.println("OUTP?");
-        while (Serial1.available() == 0) {}
         int output_init = Serial1.parseInt();
         if (output_init == 1) {
             Serial.println("Output set up correctly.");
@@ -500,13 +509,14 @@ void output_switch() {
     }
     if (psu_output == "off") {
         Serial1.println("OUTPT 0");
+        delay(100);
         Serial1.println("OUTP?");
-        while (Serial1.available() == 0) {}
         int output_init = Serial1.parseInt();
         if (output_init == 0) {
             Serial.println("Output set up correctly.");
         }
     }
+    return;
 }
 
 // get_channel()
@@ -517,17 +527,29 @@ void get_channel() {
     select_channel(channel);
     String printout = "Channel " + String(channel) + " selected.";
     Serial.print(printout);
+    return;
 }
 
-// switch_on_selected_channel()
-// - Switch on selected channel
-void switch_on_selected_channel() {
-    String cmd = "OUTP:SEL 1";
+// toggle_selected_channel()
+// - Send a query
+// - Switch on selected channel if off
+// - Switch off selected channel if on
+void toggle_selected_channel() {
+    int output_state = Serial1.parseInt();
+    Serial1.println("OUTP?");
+    delay(100);
+    if output_state == 1 {
+        String cmd = "OUTP 0";
+        String status = "Selected channel switched off.";
+    }
+    else {
+        String cmd = "OUTP 1";
+        String status = "Selected channel switched on.";
+    }
     Serial1.println(cmd);
-    cmd = "OUTP:STAT 1";
-    Serial1.println(cmd);
-    Serial.print("Selected channel switched on.");
+    Serial.print(status);
     delay(500);
+    return;
 }
 
 // select_channel()
@@ -536,6 +558,7 @@ void select_channel(int channel) {
     String cmd = "INST OUT" + String(channel);
     Serial1.println(cmd);
     delay(500);
+    return;
 }
 
 // initialize_channels()
@@ -559,7 +582,9 @@ void initialize_channels() {
         if (output_init != 0) {
             Serial.println("Output error");
             break;
-        }    }
+        }
+    }
+    return;
 }
 
 
@@ -655,6 +680,8 @@ void setup() {
     // turn the PID & set limits as compression heating after 145 pwm
     myPID.SetMode(AUTOMATIC);
     myPID.SetOutputLimits(30, 135);
+
+    return;
 }
 // ===[SETUP ENDS]===
 
@@ -666,5 +693,6 @@ void loop() {
     unsigned long ms_curr = millis();
     loop_pid(ms_curr);
     loop_command_input();
+    return;
 }
 // ===[MAIN LOOP ENDS]===

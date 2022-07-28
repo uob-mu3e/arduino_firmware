@@ -466,7 +466,7 @@ void set_voltage(float v_target) {
         Serial.println("Voltage ERROR");
     }
     Serial.println("New voltage: ");
-    Serial.println(volt);
+    Serial.println(String(v_target));
     return;
 }
 
@@ -535,15 +535,13 @@ void get_channel() {
 // - Switch on selected channel if off
 // - Switch off selected channel if on
 void toggle_selected_channel() {
-    int output_state = Serial1.parseInt();
+    String cmd = "OUTP 0";
+    String status = "Selected channel switched off.";
     Serial1.println("OUTP?");
+    int output_state = Serial1.parseInt();
     delay(100);
-    if output_state == 1 {
-        String cmd = "OUTP 0";
-        String status = "Selected channel switched off.";
-    }
-    else {
-        String cmd = "OUTP 1";
+    if (output_state == 0) {
+        cmd = "OUTP 1";
         String status = "Selected channel switched on.";
     }
     Serial1.println(cmd);

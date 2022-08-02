@@ -12,6 +12,7 @@
 //     - some example code taken from
 // https://github.com/MyElectrons/sfm3300-arduino
 // Line ending: "No line ending"
+// - manually set fan speed
 
 #include <Adafruit_MAX31865.h>
 #include <ArduinoSTL.h>
@@ -350,7 +351,7 @@ void get_setpoint() {
     Serial.print("Enter new setpoint: \n");
     setpoint_input = (double)Serial.parseFloat();
     temp_setpoint = constrain(setpoint_input, 0, 1000);
-    Serial.println("New setpoint: " + String(temp_setpoint));
+    if (human_readable) Serial.print("New setpoint: " + String(temp_setpoint));
     delay(500);
     return;    
 }
@@ -372,7 +373,7 @@ int calculate_flow_avg(float values[10]) {
 void get_psu_parameter(char parameter) {
     // ### VOLTAGE ###
     if (parameter == 'v') {
-        Serial.println("Enter channel voltage: ");
+        if (human_readable) Serial.print("Enter channel voltage: ");
         float volt_setpoint = Serial.parseFloat();
         set_voltage(volt_setpoint);
         delay(500);
@@ -381,13 +382,15 @@ void get_psu_parameter(char parameter) {
     // initialise to outside the limit
     float current_setpoint = current_limit + 1;
     if (parameter == 'c') {
-        Serial.println("Enter channel current: ");
+        if (human_readable) Serial.print("Enter channel current: ");
         while (true) {
             current_setpoint = Serial.parseFloat();
             if (current_setpoint <= current_limit) break;
-            Serial.print("Current too high. Pick a value below ");
-            Serial.print(current_limit);
-            Serial.println(" amps: ");
+            if (human_readable) {
+                Serial.print("Current too high. Pick a value below ");
+                Serial.print(current_limit);
+                Serial.print(" amps: ");
+            }
         }
         set_current(current_setpoint);
         delay(500);
@@ -465,8 +468,10 @@ void set_voltage(float v_target) {
     } else {
         Serial.println("Voltage ERROR");
     }
-    Serial.println("New voltage: ");
-    Serial.println(String(v_target));
+    if (human_readable) {
+        Serial.print("New voltage: ");
+        Serial.print(String(v_target));
+    }
     return;
 }
 
@@ -522,11 +527,11 @@ void output_switch() {
 // get_channel()
 // - asks for a PSU channel and selects it
 void get_channel() {
-    Serial.println("Select PSU channel: ");
+    if (human_readable) Serial.print("Select PSU channel: ");
     int channel = Serial.parseInt(); 
     select_channel(channel);
     String printout = "Channel " + String(channel) + " selected.";
-    Serial.print(printout);
+    if (human_readable) Serial.print(printout);
     return;
 }
 
@@ -542,11 +547,11 @@ void toggle_selected_channel() {
     delay(100);
     if (output_state == 0) {
         cmd = "OUTP 1";
-        String status = "Selected channel switched on.";
+        status = "Selected channel switched on.";
     }
     Serial1.println(cmd);
-    Serial.print(status);
     delay(500);
+    if (human_readable) Serial.print(status);
     return;
 }
 
@@ -666,8 +671,7 @@ void setup() {
 
     // initialise fan PWM duty cycle to 50/255. Fan doesn't run when this value
     // is lower than mid-30s initialise other pins
-    int pwm_value;
-    analogWrite(fan_pwm_pin, pwm_value = 50);
+    analogWrite(fan_pwm_pin, pwm_value);
     analogWrite(yellow_pin, 125);
     analogWrite(red_pin, 125);
 

@@ -12,7 +12,8 @@
 //     - some example code taken from
 // https://github.com/MyElectrons/sfm3300-arduino
 // Line ending: "No line ending"
-// - manually set fan speed
+// - TODO: manually set fan speed
+// - TODO: read out voltage/current
 
 #include <Adafruit_MAX31865.h>
 #include <ArduinoSTL.h>
@@ -101,6 +102,8 @@ float temperature = 0;
 float flow = 0;
 float flow_moving_avg = 0;
 float volume;
+float fan_voltage = 0;
+float fan_current = 0
 
 // ### FLAGS ###
 bool airflow_stable = false;
@@ -348,7 +351,7 @@ void control_arduino_leds(float flow_val) {
 // - Asks for and set the temperature setpoint
 void get_setpoint() {
     int setpoint_input;
-    Serial.print("Enter new setpoint: \n");
+    if (human_readable) Serial.print("Enter new setpoint: \n");
     setpoint_input = (double)Serial.parseFloat();
     temp_setpoint = constrain(setpoint_input, 0, 1000);
     if (human_readable) Serial.print("New setpoint: " + String(temp_setpoint));
@@ -419,8 +422,11 @@ void transmit_data(void) {
     String stable, setting, title, delimiter;
 
     std::vector<String> stream_keys = {
-        "Temp",          "Flow",     "PWM Value",   "Flow Avg",
-        "Humidity", "Ambient Temp"};
+        "Temp",   "Flow",   "PWM Value",   "Avg (flow)",
+        "Humidity",   "Ambient Temp"};
+    std::vector<String> stream_keys_short = {
+        "T",    "F",     "P",   "A",
+        "RH", "AT"};
     std::vector<String> stream_values = {
         String(temperature),     String(flow),          String(pwm_value),
         String(flow_moving_avg), String(temp_setpoint), String(rel_humidity),
@@ -433,7 +439,7 @@ void transmit_data(void) {
             setting = "Setting";
             delimiter = "\t";
         } else {
-            title = stream_keys[idx][0];
+            title = stream_keys_short[idx];
             stable = "K";
             setting = "N";
             delimiter = "";
@@ -474,6 +480,9 @@ void set_voltage(float v_target) {
     }
     return;
 }
+
+// read_voltage()
+// - Read and return the current voltage
 
 // set_current()
 // - Sets PSU current

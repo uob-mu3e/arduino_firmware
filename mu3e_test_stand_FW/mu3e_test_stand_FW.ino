@@ -12,8 +12,6 @@
 //     - some example code taken from
 // https://github.com/MyElectrons/sfm3300-arduino
 // Line ending: "No line ending"
-// - TODO: manually set fan speed
-// - TODO: read out voltage/current
 
 #include <Adafruit_MAX31865.h>
 #include <ArduinoSTL.h>
@@ -103,12 +101,13 @@ float flow = 0;
 float flow_moving_avg = 0;
 float volume;
 float fan_voltage = 0;
-float fan_current = 0
+float fan_current = 0;
 
 // ### FLAGS ###
 bool airflow_stable = false;
 bool broadcast_flag = true;
 bool human_readable = false;
+bool pid_on = true;
 bool crc_error;
 
 // ### PID INITIALISATION ###
@@ -157,7 +156,6 @@ void measure_flow_convert_sfm() {
         // once the flow changed direction reset the volume
         if (flow_sign_previous != flow_sign) {
             flow_sign_previous = flow_sign;
-            // display_flow_volume();
             volume = 0;
         }
 
@@ -182,113 +180,15 @@ void measure_flow_convert_sfm() {
 }
 // power_up_error_handler()
 // read_error_handler()
-// display_flow_volume()
 // - Functions to control humidity sensor
 // - For convenience display only significant volumes (>5ml)
 void power_up_error_handler(HIH61xx<TwoWire>& hih) {
-    Serial.println("Error powering up HIH61xx device");
+    Serial.println("Error powering up HIH61xx device.\n");
     return;
 }
 
 void read_error_handler(HIH61xx<TwoWire>& hih) {
-    Serial.println("Error reading from HIH61xx device");
-    return;
-}
-
-void display_flow_volume(bool force_d = false) {
-    if (5 < abs(volume) || force_d) {  
-        Serial.print(flow);
-        Serial.print("\t");
-        Serial.print(volume);
-        Serial.print("\t");
-        Serial.print(pwm_value);
-        Serial.print("\t");
-        Serial.print(flow_moving_avg);
-        Serial.println(crc_error ? " CRC error" : "");
-    }
-    return;
-}
-
-// loop_pid()
-// - PID control loop logic
-// - Outputs variables every loop
-void loop_pid(unsigned long ms_curr) {
-    // not sure about the role of this
-    bool printed = true;
-
-    // "soft interrupt" every mms milliseconds
-    if (ms_curr - ms_display >= mms) {
-        ms_display = ms_curr;
-        measure_flow_convert_sfm();
-        temperature = thermo.temperature(RNOMINAL, RREF);
-        if (samplingInterval.isExpired() && !hih.isSampling()) {
-            hih.start();
-            printed = false;
-            samplingInterval.repeat();
-        }
-
-        // instruct the HIH61xx to take a measurement - blocks until the
-        // measurement is ready.
-        hih.process();
-        hih.read();
-        if (hih.isFinished() && !printed) {
-            // print saved values
-            printed = true;
-            rel_humidity = hih.getRelHumidity() / 100.0;
-            amb_temp = hih.getAmbientTemp() / 100.0;
-        }
-        input = (double)temperature;
-        double gap = abs(temp_setpoint - input);
-        if (temperature > amb_temp + 1) {
-            // ### CLOSE: Conservative tuning parameters ###
-            if (gap < 0.1) {
-                myPID.SetTunings(cons_kp, cons_ki, cons_kd);
-                myPID.Compute();
-                pwm_value = output;
-            }
-            // ### FAR: aggressive tuning parameters ###
-            else {
-                myPID.SetTunings(agg_kp, agg_ki, agg_kd);
-                myPID.Compute();
-                pwm_value = output;
-            }
-        }
-        analogWrite(fan_pwm_pin, pwm_value);
-
-        flow_history[flow_array_idx] = flow;
-        flow_array_idx++;
-        flow_array_idx %= 10;
-
-        flow_moving_avg = calculate_flow_avg(flow_history);
-        if (broadcast_flag) transmit_data();
-    }
-    return;
-}
-
-// loop_command_input()
-// - Reads and performs commands while serial port is available
-// - After every command, reset current command to 0
-// - The weird effect of this is that there is always character '0' in the buffer
-//   so we must set line ending to "No line ending", or else the input of some variables
-//   will be intercepted as 0.0 (for Serial.parseFloat())
-// - Currently, it is set to '\0'
-void loop_command_input() {
-    char pc_command;
-    while (Serial.available() > 0) {
-        pc_command = Serial.read();
-        if (pc_command == '?') print_help();
-        if (pc_command == 'f') display_flow_volume(true);
-        if (pc_command == 's') get_setpoint();
-        if (pc_command == 'r') human_readable = toggle_flag(human_readable);
-        if (pc_command == 'b') broadcast_flag = toggle_flag(broadcast_flag);
-        if (pc_command == 'd') transmit_data();
-        if (pc_command == 'p') get_channel();
-        if (pc_command == 'o') toggle_selected_channel();
-        if ((pc_command == 'v') || (pc_command == 'c')) {
-            get_psu_parameter(pc_command);
-        }
-        pc_command = '\0';  
-    }
+    Serial.println("Error reading from HIH61xx device.\n");
     return;
 }
 
@@ -302,27 +202,16 @@ bool toggle_flag(bool flag) { return !flag; }
 void print_help() {
     Serial.println(F("Commands:"));
     Serial.println(F("?: Help"));
-    Serial.println(F("r: Toggle verbose human (R)eadable output"));
-    Serial.println(F("s: Change temperature (S)etpoint."));
-    Serial.println(F("d: (D)isplay all measurements"));
-    Serial.println(F("f: display (F)low measurement"));
-    Serial.println(F("b: Toggle (B)roadcast measurements"));
+    Serial.println(F("r: Toggle verbose human (r)eadable output"));
+    Serial.println(F("s: Change temperature (s)etpoint."));
+    Serial.println(F("d: Trigger a (d)isplay of all measurements once"));
+    Serial.println(F("b: Toggle (b)roadcast measurements"));
     Serial.println(F("v{value}: Change PSU (v)oltage"));
     Serial.println(F("c{value}: Change PSU (c)urrent"));
-    Serial.println(F("p{value}: Select a (P)SU channel"));
-    Serial.println(F("o: Toggle selected PSU channel (O)n/(O)ff"));
-    Serial.println(
-        F("t: display (T)emperature measurement - not implememted "
-          "yet"));
-    Serial.println(
-        F("h: display (H)umidity measurement - not implememted yet"));
-    Serial.println(
-        F("x: Break - stop closed loop control and turn off fan - "
-          "not "
-          "implememted yet"));
-    Serial.println(
-        F("l: Run - begin closed (l)oop control - not implememted "
-          "yet"));
+    Serial.println(F("p{value}: Select a (p)ower supply channel"));
+    Serial.println(F("f{value}: Set (f)an speed throgh PWM value when is PID off"));
+    Serial.println(F("o: Toggle selected power supply channel (o)n/(o)ff"));
+    Serial.println(F("l: Toggle PID closed (l)oop control"));
     return;
 }
 
@@ -351,10 +240,10 @@ void control_arduino_leds(float flow_val) {
 // - Asks for and set the temperature setpoint
 void get_setpoint() {
     int setpoint_input;
-    if (human_readable) Serial.print("Enter new setpoint: \n");
+    if (human_readable) Serial.print("Enter new setpoint: ");
     setpoint_input = (double)Serial.parseFloat();
     temp_setpoint = constrain(setpoint_input, 0, 1000);
-    if (human_readable) Serial.print("New setpoint: " + String(temp_setpoint));
+    if (human_readable) Serial.print("New setpoint: " + String(temp_setpoint) + "\n");
     delay(500);
     return;    
 }
@@ -422,15 +311,17 @@ void transmit_data(void) {
     String stable, setting, title, delimiter;
 
     std::vector<String> stream_keys = {
-        "Temp",   "Flow",   "PWM Value",   "Avg (flow)",
-        "Humidity",   "Ambient Temp"};
+        "Temp",       "Flow",          "PWM Value",
+        "Avg (flow)", "Temp Setpoint", "Rel Humidity",
+        "Amb Temp",   "Voltage",       "Current"};
     std::vector<String> stream_keys_short = {
-        "T",    "F",     "P",   "A",
-        "RH", "AT"};
+        "T",  "F",  "P",
+        "A",  "S",  "RH", 
+        "AT", "V",  "C"};
     std::vector<String> stream_values = {
-        String(temperature),     String(flow),          String(pwm_value),
-        String(flow_moving_avg), String(temp_setpoint), String(rel_humidity),
-        String(amb_temp)};
+        String(temperature),     String(flow),           String(pwm_value), 
+        String(flow_moving_avg), String(temp_setpoint),  String(rel_humidity),
+        String(amb_temp),        String(fan_voltage),    String(fan_current)};
 
     for (int idx = 0; idx < stream_keys.size(); ++idx) {
         if (human_readable) {
@@ -438,6 +329,9 @@ void transmit_data(void) {
             stable = "Stable";
             setting = "Setting";
             delimiter = "\t";
+            if ((idx != 0) && (idx % 3 == 0)) {
+                Serial.print("\n");
+            }
         } else {
             title = stream_keys_short[idx];
             stable = "K";
@@ -454,6 +348,7 @@ void transmit_data(void) {
         Serial.print(setting);
     }
     Serial.println(crc_error ? " CRC error" : "");
+    if (human_readable) Serial.print("\n");
     return;
 }
 
@@ -464,45 +359,56 @@ void set_voltage(float v_target) {
     String cmd = "VOLT " + String(v_target);
     Serial1.println(cmd);
     delay(1000);
-    Serial1.println("VOLT?");
-    float volt_reading = Serial1.parseFloat();
-    Serial.print("Output voltage: ");
-    Serial.println(volt_reading);
-    if (volt_reading < v_target + volt_precision ||
-        volt_reading > v_target - volt_precision) {
-        Serial.println("Voltage OK");
-    } else {
-        Serial.println("Voltage ERROR");
-    }
     if (human_readable) {
-        Serial.print("New voltage: ");
-        Serial.print(String(v_target));
+        Serial1.println("VOLT?");
+        float volt_reading = Serial1.parseFloat();
+        Serial.print("Output voltage: ");
+        Serial.println(volt_reading);
+        if (volt_reading < v_target + volt_precision ||
+            volt_reading > v_target - volt_precision) {
+            Serial.println("Voltage OK");
+        } else {
+            Serial.println("Voltage ERROR");
+        }
     }
     return;
 }
 
 // read_voltage()
-// - Read and return the current voltage
+// - Read and return the voltage
+void read_voltage() {
+    Serial1.println("VOLT?");
+    fan_voltage = Serial1.parseFloat();
+    return;
+}
 
 // set_current()
 // - Sets PSU current
 // - Checks whether the output current=setpoint
 void set_current(float c_target) {
-    String cmd = "CURR ";
-    String curr = String(c_target);
-    String tot = cmd + curr;
-    Serial1.println(tot);
+    String cmd = "CURR " + String(c_target);
+    Serial1.println(cmd);
     delay(1000);
-    Serial1.println("CURR?");
-    float current_reading = Serial1.parseFloat();
-    Serial.print("Output current: ");
-    Serial.println(current_reading);
-    if (current_reading < c_target + curr_precision ||
-        current_reading > c_target - curr_precision) {
-        Serial.println("Current OK");
-    } else {
-        Serial.println("Current ERROR");
+    if (human_readable) { 
+        Serial1.println("CURR?");
+        float current_reading = Serial1.parseFloat();
+        Serial.print("Output current: ");
+        Serial.println(current_reading);
+        if (current_reading < c_target + curr_precision ||
+            current_reading > c_target - curr_precision) {
+            Serial.println("Current OK\n");
+        } else {
+            Serial.println("Current ERROR\n");
+        }
     }
+    return;
+}
+
+// read_current()
+// - Read and return the current
+void read_current() {
+    Serial1.println("CURR?");
+    fan_current = Serial1.parseFloat();
     return;
 }
 
@@ -539,7 +445,7 @@ void get_channel() {
     if (human_readable) Serial.print("Select PSU channel: ");
     int channel = Serial.parseInt(); 
     select_channel(channel);
-    String printout = "Channel " + String(channel) + " selected.";
+    String printout = "Channel " + String(channel) + " selected.\n";
     if (human_readable) Serial.print(printout);
     return;
 }
@@ -550,13 +456,13 @@ void get_channel() {
 // - Switch off selected channel if on
 void toggle_selected_channel() {
     String cmd = "OUTP 0";
-    String status = "Selected channel switched off.";
+    String status = "Selected channel switched off.\n";
     Serial1.println("OUTP?");
     int output_state = Serial1.parseInt();
     delay(100);
     if (output_state == 0) {
         cmd = "OUTP 1";
-        status = "Selected channel switched on.";
+        status = "Selected channel switched on.\n";
     }
     Serial1.println(cmd);
     delay(500);
@@ -592,13 +498,122 @@ void initialize_channels() {
         while (Serial1.available() == 0) {}
         int output_init = Serial1.parseInt();
         if (output_init != 0) {
-            Serial.println("Output error");
+            Serial.println("Output error.\n");
             break;
         }
     }
     return;
 }
 
+// set_fan_speed()
+// - set the PWM value
+// - only if pid not on
+void set_fan_speed() {
+    if (pid_on) {
+        if (human_readable) Serial.print("PID is currently controlling fan speed.\n");
+        return;
+    }
+    if (human_readable) Serial.print("Enter PWM value bewteen 30-135: ");
+    pwm_value = Serial.parseInt(); 
+    analogWrite(fan_pwm_pin, pwm_value);
+    if (human_readable) {
+      String printout = "PWM set at " + String(pwm_value) + ".\n";
+      Serial.print(printout);
+    }
+    return;
+}
+
+// loop_pid()
+// - PID control loop logic
+// - Outputs variables every loop
+void loop_pid(unsigned long ms_curr) {
+    // not sure about the role of this
+    bool printed = true;
+
+    // "soft interrupt" every mms milliseconds
+    if (ms_curr - ms_display >= mms) {
+        ms_display = ms_curr;
+        measure_flow_convert_sfm();
+        // read temp
+        temperature = thermo.temperature(RNOMINAL, RREF);
+        // read volt & current
+        read_voltage();
+        delay(500);
+        read_current();
+        if (samplingInterval.isExpired() && !hih.isSampling()) {
+            hih.start();
+            printed = false;
+            samplingInterval.repeat();
+        }
+
+        // instruct the HIH61xx to take a measurement - blocks until the
+        // measurement is ready.
+        hih.process();
+        hih.read();
+        if (hih.isFinished() && !printed) {
+            // print saved values
+            printed = true;
+            rel_humidity = hih.getRelHumidity() / 100.0;
+            amb_temp = hih.getAmbientTemp() / 100.0;
+        }
+        input = (double)temperature;
+        double gap = abs(temp_setpoint - input);
+
+        if (pid_on) {
+            if (temperature > amb_temp + 1) {
+                // ### CLOSE: Conservative tuning parameters ###
+                if (gap < 0.1) {
+                    myPID.SetTunings(cons_kp, cons_ki, cons_kd);
+                    myPID.Compute();
+                    pwm_value = output;
+                }
+                // ### FAR: aggressive tuning parameters ###
+                else {
+                    myPID.SetTunings(agg_kp, agg_ki, agg_kd);
+                    myPID.Compute();
+                    pwm_value = output;
+                }
+            }
+            analogWrite(fan_pwm_pin, pwm_value);
+        }
+
+        flow_history[flow_array_idx] = flow;
+        flow_array_idx++;
+        flow_array_idx %= 10;
+
+        flow_moving_avg = calculate_flow_avg(flow_history);
+        if (broadcast_flag) transmit_data();
+    }
+    return;
+}
+
+// loop_command_input()
+// - Reads and performs commands while serial port is available
+// - After every command, reset current command to 0
+// - The weird effect of this is that there is always character '0' in the buffer
+//   so we must set line ending to "No line ending", or else the input of some variables
+//   will be intercepted as 0.0 (for Serial.parseFloat())
+// - Currently, it is set to '\0'
+void loop_command_input() {
+    char pc_command;
+    while (Serial.available() > 0) {
+        pc_command = Serial.read();
+        if (pc_command == '?') print_help();
+        if (pc_command == 's') get_setpoint();
+        if (pc_command == 'r') human_readable = toggle_flag(human_readable);
+        if (pc_command == 'b') broadcast_flag = toggle_flag(broadcast_flag);
+        if (pc_command == 'l') pid_on = toggle_flag(pid_on);
+        if (pc_command == 'f') set_fan_speed();
+        if (pc_command == 'd') transmit_data();
+        if (pc_command == 'p') get_channel();
+        if (pc_command == 'o') toggle_selected_channel();
+        if ((pc_command == 'v') || (pc_command == 'c')) {
+            get_psu_parameter(pc_command);
+        }
+        pc_command = '\0';
+    }
+    return;
+}
 
 // ===[OTHER FUNCTIONS END]===
 
